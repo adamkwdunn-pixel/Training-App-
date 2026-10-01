@@ -67,7 +67,7 @@ What you're paying for:
    - **iPhone:** open the site in **Safari** → Share → **Add to Home Screen**.
    - **Android:** open it in **Chrome** → ⋮ menu → **Install app** / **Add to Home screen**.
 3. **When you're ready for real athletes:**
-   - In **Training → Athletes**, open each demo athlete → **Settings → Remove from squad**.
+   - In **Coach → Athletes**, open each demo athlete → **Settings → Remove from squad**.
    - Build your programs in the **Coach** tab.
    - Add athletes one of two ways:
      - **You sign them up** (Athletes → Add): they get an email with their login details. See "Emailing login details" below.
@@ -82,7 +82,7 @@ What you're paying for:
 
 ## Emailing login details to athletes
 
-When you add an athlete (**Training → Athletes → Add**), the app creates a temporary password and emails it to them, with a link to the app. They choose their own password the first time they sign in. If you need to send new details later (for example, they forgot their password), use the athlete's **Settings → Send new login details** button.
+When you add an athlete (**Coach → Athletes → Add**), the app creates a temporary password and emails it to them, with a link to the app. They choose their own password the first time they sign in. If you need to send new details later (for example, they forgot their password), use the athlete's **Settings → Send new login details** button.
 
 The app needs an email account to send from. Until you set one up, it shows you the login details with **Copy** and **Share** buttons instead, so you can text or WhatsApp them.
 

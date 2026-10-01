@@ -5,6 +5,9 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { DATA_DIR, UPLOAD_DIR, tx } from './db.js';
 import { storageStatus } from './storage.js';
+import { sleepDebt, DEBT_WINDOW_DAYS } from '../shared/sleep.js';
+import { ageFrom, weeklyRate, withTrend } from '../shared/nutrition.js';
+import { composition } from '../shared/bodyfat.js';
 import { authenticate, hashPassword, verifyPassword, issueToken, newInviteCode, publicUser } from './auth.js';
 import { targetLoad, estimate1RM } from './lib/loads.js';
 import { computeMetrics, applyRule, METRICS, OPS, ACTIONS, PRESET_RULES } from './lib/progression.js';
@@ -261,17 +264,76 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       SELECT ev.*, e.name AS exercise_name FROM progression_events ev JOIN exercises e ON e.id = ev.exercise_id
       WHERE ev.athlete_id = ? ORDER BY ev.id DESC LIMIT 30`).all(a.id);
     const athlete = { ...publicUser(a), ...(req.user.role === 'coach' ? { notes: a.notes } : {}) };
-    res.json({ athlete, states, assignments, events });
+    res.json({ athlete, states, assignments, events, snapshot: snapshotOf(a, str(req.query.today) || today()) });
   });
 
+  /** Key numbers for the top of an athlete's page. */
+  function snapshotOf(a, day) {
+    const weights = withTrend(q('SELECT measured_on AS date, weight FROM bodyweight_logs WHERE athlete_id = ? ORDER BY measured_on').all(a.id));
+    const bf = q('SELECT * FROM body_measurements WHERE athlete_id = ? ORDER BY measured_on DESC, id DESC LIMIT 1').get(a.id);
+    const ready = q("SELECT AVG(score) AS avg, COUNT(*) AS n FROM readiness WHERE athlete_id = ? AND day > date(?, '-7 days') AND day <= ?").get(a.id, day, day);
+    const nights = q(`SELECT day, sleep_hours FROM readiness WHERE athlete_id = ? AND day > date(?, '-${DEBT_WINDOW_DAYS} days') AND day <= ?`).all(a.id, day, day);
+    const sessions = q("SELECT COUNT(*) AS n, MAX(performed_on) AS last FROM workout_logs WHERE athlete_id = ? AND performed_on > date(?, '-7 days')").get(a.id, day);
+    const lastSession = q('SELECT MAX(performed_on) AS d FROM workout_logs WHERE athlete_id = ?').get(a.id).d;
+    const injuries = q("SELECT area, side, availability FROM injuries WHERE athlete_id = ? AND status != 'resolved'").all(a.id);
+    const program = q(`SELECT p.name FROM assignments s JOIN programs p ON p.id = s.program_id
+      WHERE s.athlete_id = ? AND s.active = 1 ORDER BY s.start_date DESC LIMIT 1`).get(a.id)?.name ?? null;
+    return {
+      age: ageFrom(a.birth_date),
+      bodyweight: weights.at(-1)?.weight ?? a.bodyweight ?? null,
+      bodyweight_trend: weights.at(-1)?.trend ?? null,
+      bodyweight_rate: weeklyRate(weights, 28),
+      body_fat_pct: bf?.body_fat_pct ?? null,
+      body_fat_on: bf?.measured_on ?? null,
+      lean_mass: bf ? composition(a.bodyweight || bf.bodyweight, bf.body_fat_pct).lean_mass : null,
+      readiness_7d: ready.avg != null ? Math.round(ready.avg) : null,
+      checkins_7d: ready.n,
+      sleep_debt: sleepDebt(nights, day),
+      sessions_7d: sessions.n,
+      last_session: lastSession,
+      injuries,
+      program,
+    };
+  }
+
+  // Coach edits an athlete's details. Only the fields sent are changed.
   app.patch('/api/athletes/:id', (req, res) => {
     requireCoach(req);
     const a = athleteFor(req, req.params.id);
     const b = req.body || {};
-    q('UPDATE users SET position = ?, bodyweight = ?, load_increment = ?, notes = ? WHERE id = ?').run(
-      str(b.position ?? a.position), num(b.bodyweight ?? a.bodyweight), num(b.load_increment) || a.load_increment, str(b.notes ?? a.notes), a.id,
-    );
-    res.json({ ok: true });
+    const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
+    let email = a.email;
+    if (has('email')) {
+      email = String(b.email || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail(400, 'That doesn’t look like an email address');
+      if (email.toLowerCase() !== a.email.toLowerCase() && q('SELECT 1 FROM users WHERE email = ?').get(email)) fail(409, 'Another account already uses that email');
+    }
+    if (has('name') && !str(b.name)) fail(400, 'Name can’t be empty');
+    const height = has('height_cm') ? num(b.height_cm) : a.height_cm;
+    if (height != null && (height < 120 || height > 230)) fail(400, 'Height should be in cm (120–230)');
+    const weight = has('bodyweight') ? num(b.bodyweight) : null;
+    if (weight != null && (weight < 30 || weight > 250)) fail(400, 'Bodyweight should be in kg (30–250)');
+    tx(db, () => {
+      q(`UPDATE users SET name = ?, email = ?, position = ?, sex = ?, birth_date = ?, height_cm = ?, load_increment = ?, notes = ? WHERE id = ?`).run(
+        has('name') ? String(b.name).trim() : a.name,
+        email,
+        has('position') ? str(b.position) : a.position,
+        has('sex') ? (['male', 'female'].includes(b.sex) ? b.sex : null) : a.sex,
+        has('birth_date') ? str(b.birth_date) : a.birth_date,
+        height,
+        num(b.load_increment) || a.load_increment,
+        has('notes') ? str(b.notes) : a.notes,
+        a.id,
+      );
+      // A changed bodyweight is recorded as today's weigh-in so trends stay consistent.
+      if (weight != null && weight !== a.bodyweight) {
+        q(`INSERT INTO bodyweight_logs (athlete_id, measured_on, weight) VALUES (?, ?, ?)
+           ON CONFLICT (athlete_id, measured_on) DO UPDATE SET weight = excluded.weight`).run(a.id, str(b.today) || today(), weight);
+        q('UPDATE users SET bodyweight = ? WHERE id = ?').run(weight, a.id);
+      }
+    });
+    const fresh = q('SELECT * FROM users WHERE id = ?').get(a.id);
+    res.json({ athlete: { ...publicUser(fresh), notes: fresh.notes } });
   });
 
   app.delete('/api/athletes/:id', (req, res) => {

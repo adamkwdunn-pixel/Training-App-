@@ -16,6 +16,7 @@ The app is split into four sections, each with its own tab: **Training, Nutritio
   - Pick the program's **progression model** from a dropdown (double progression, linear, RIR-guided, % block…). Override it per athlete or per exercise from the same list.
 - **Never lose work:** unsaved session edits are kept on the device. You can create a new exercise without leaving the session.
 - **Sign athletes up:** the app generates a temporary password and emails the athlete their login details. They set their own password on first sign-in. You can resend or reset login details at any time.
+- **Athletes (Coach → Athletes):** each athlete's page opens with a snapshot: bodyweight trend, body fat, 7-day readiness, sleep debt, sessions this week, program and injuries. Tabs cover details, program, log, form checks, progress, nutrition, recovery, testing and messages. **Details** lets you edit name, login email, position, sex, date of birth, height, bodyweight, load rounding and private notes.
 - **Train yourself:** add yourself as an athlete in your own squad and switch between coach and athlete views without signing out.
 
 ### Coach tab (coach accounts only)

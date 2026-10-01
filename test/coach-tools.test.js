@@ -74,6 +74,20 @@ test('coach tools: login emails, own athlete profile, program rule, week control
   mailFails = false;
   assert.equal((await call('POST', '/athletes', C, { name: 'Bad', email: 'not-an-email' })).status, 400);
 
+  // --- Coach edits an athlete's details; snapshot reflects them.
+  const ed = await call('PATCH', `/athletes/${add.data.id}`, C, { name: 'Sam T', position: 'Loosehead prop', sex: 'male', birth_date: '2000-05-01', height_cm: 183, bodyweight: 112.4, notes: 'Shoulder history' });
+  assert.equal(ed.status, 200);
+  assert.equal(ed.data.athlete.name, 'Sam T');
+  assert.equal(ed.data.athlete.notes, 'Shoulder history');
+  const detail = (await call('GET', `/athletes/${add.data.id}`, C)).data;
+  assert.equal(detail.athlete.height_cm, 183);
+  assert.equal(detail.snapshot.bodyweight, 112.4);
+  assert.ok(detail.snapshot.age >= 25);
+  assert.equal(detail.snapshot.sleep_debt.debt_hours, 0);
+  assert.equal((await call('PATCH', `/athletes/${add.data.id}`, C, { email: 'jo@club.com' })).status, 409);
+  assert.equal((await call('PATCH', `/athletes/${add.data.id}`, C, { height_cm: 6 })).status, 400);
+  assert.equal((await call('PATCH', `/athletes/${add.data.id}`, C, { name: '' })).status, 400);
+
   // --- Coach adds themselves as an athlete and switches between views.
   const me = await call('POST', '/me/athlete-profile', C, {});
   assert.equal(me.status, 201);

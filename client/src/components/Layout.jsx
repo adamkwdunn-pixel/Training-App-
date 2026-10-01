@@ -32,16 +32,17 @@ const ATHLETE_SECTIONS = [
 // The Coach tab is only ever built for coach accounts (and the API refuses everyone else).
 const COACH_SECTIONS = [
   {
-    key: 'training', label: 'Training', icon: 'bolt', to: '/', match: ['/', '/athletes', '/videos', '/logs'],
-    subs: [{ to: '/', label: 'Inbox' }, { to: '/athletes', label: 'Athletes' }, { to: '/videos', label: 'Form checks' }],
+    key: 'training', label: 'Training', icon: 'bolt', to: '/', match: ['/', '/videos', '/logs'],
+    subs: [{ to: '/', label: 'Inbox' }, { to: '/videos', label: 'Form checks' }],
   },
   { key: 'nutrition', label: 'Nutrition', icon: 'apple', to: '/nutrition', match: ['/nutrition'], subs: [] },
   { key: 'recovery', label: 'Recovery', icon: 'heart', to: '/recovery', match: ['/recovery'], subs: [] },
   { key: 'testing', label: 'Testing', icon: 'trophy', to: '/testing', match: ['/testing'], subs: [] },
   {
-    key: 'coach', label: 'Coach', icon: 'clipboard', to: '/coach', match: ['/coach'],
+    key: 'coach', label: 'Coach', icon: 'clipboard', to: '/coach', match: ['/coach', '/athletes'],
     subs: [
       { to: '/coach', label: 'Programs' },
+      { to: '/athletes', label: 'Athletes' },
       { to: '/coach/rules', label: 'Progression rules' },
       { to: '/coach/exercises', label: 'Exercises' },
       { to: '/coach/protocols', label: 'Protocols' },
@@ -60,6 +61,16 @@ function sectionFor(sections, path) {
         bestLen = m.length;
       }
     }
+  }
+  return best;
+}
+
+/** The sub-page a path belongs to: exact match, else the longest sub whose path is a prefix. */
+function activeSub(subs, path) {
+  let best = null;
+  for (const n of subs) {
+    const hit = path === n.to || (n.to !== '/' && path.startsWith(`${n.to}/`));
+    if (hit && (!best || n.to.length > best.to.length)) best = n;
   }
   return best;
 }
@@ -90,6 +101,7 @@ export default function Layout({ children }) {
   const sections = user.role === 'coach' ? COACH_SECTIONS : ATHLETE_SECTIONS;
   const current = sectionFor(sections, pathname);
   const subs = current?.subs || [];
+  const sub = activeSub(subs, pathname);
   const isActiveSection = (s) => s === current;
 
   return (
@@ -104,7 +116,7 @@ export default function Layout({ children }) {
               </NavLink>
               {isActiveSection(s) && s.subs.length > 1 && (
                 <div className="side-sub">
-                  {s.subs.map((n) => <NavLink key={n.to} to={n.to} end>{n.label}</NavLink>)}
+                  {s.subs.map((n) => <NavLink key={n.to} to={n.to} className={() => (n === sub ? 'active' : '')}>{n.label}</NavLink>)}
                 </div>
               )}
             </div>
@@ -129,7 +141,7 @@ export default function Layout({ children }) {
           </div>
           {subs.length > 1 && (
             <nav className="subnav" aria-label={`${current.label} pages`}>
-              {subs.map((n) => <NavLink key={n.to} to={n.to} end className="pill">{n.label}</NavLink>)}
+              {subs.map((n) => <NavLink key={n.to} to={n.to} className={() => `pill ${n === sub ? 'active' : ''}`}>{n.label}</NavLink>)}
             </nav>
           )}
         </header>

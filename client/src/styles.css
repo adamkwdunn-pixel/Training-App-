@@ -569,3 +569,15 @@ tr.clickable:hover td { background: var(--hover); }
   /* Badges drop under the text on phones instead of squeezing it. */
   .row.wrap > .badges { flex-basis: 100%; max-width: 100%; justify-content: flex-start; padding-left: 62px; margin-top: -6px; }
 }
+
+/* ---------- athlete snapshot ---------- */
+.snapshot { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+@media (min-width: 760px) { .snapshot { grid-template-columns: repeat(3, 1fr); } }
+.snap-tile {
+  display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: transparent; color: var(--text); padding: 14px; font: inherit;
+}
+.snap-tile:hover { background: var(--raised); }
+.snap-value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.snap-value small { font-size: 0.8rem; color: var(--muted); font-weight: 600; margin-left: 3px; letter-spacing: 0; }
+.snap-value.small-value { font-size: 1rem; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
