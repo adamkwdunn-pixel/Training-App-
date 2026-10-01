@@ -1,30 +1,36 @@
 # Squad Training
 
-A coaching app for rugby and strength & conditioning. Coaches build programs and set their own progression rules. Athletes follow their sessions on their phone, log sets, and send form-check videos. The coach reviews and gives feedback from a phone or PC.
+A coaching app for rugby and strength & conditioning, split into four sections: **Training, Nutrition, Recovery and Testing**. Coaches build programs, set their own progression rules, and see every athlete's training, intake, readiness, injuries and test results. Athletes use it on their phone; the coach can work from a phone or PC.
 
 It's a **web app you can install** (a PWA). Open the site on a phone, then "Add to Home Screen", and it runs like a native app. On a PC, use it in any browser. It's one codebase with no app-store approval needed.
 
 ## What it does
 
-**For the coach**
-- **Programs:** weeks → sessions → exercises. Each exercise is prescribed as sets × reps with a load type:
-  - **% of max** (optionally with a target RIR)
-  - **RIR (reps in reserve)**: the load is worked out from the athlete's max using the RPE/RIR chart (e.g. 5 reps @ 2 RIR ≈ 81% of max)
-  - **RPE**, **fixed kg**, **bodyweight**, or **no load** (speed/conditioning)
-  - Blocks (A1/A2…), tempo, rest, targets such as "30 m from 3-point" with a numeric target (e.g. 4.10 s), and coaching notes
-- Copy a session or a whole week, or duplicate a program to make an athlete-specific version.
-- **Progression rules you write yourself:** "if *all reps completed* = 1 and *RIR vs target* ≥ 2 → *add 5 kg*", "if *fail streak* ≥ 2 → *−10 %*", "if *e1RM vs max* ≥ 2 % → *update max*", "if *sprint time vs target* > 5 % → *flag me*". Clauses are checked top to bottom and the first match wins. A rule can be attached per athlete (on their program) or overridden per exercise. Four editable presets are included.
-- **Inbox:** new sessions logged, videos waiting for review, rule flags, and athlete messages.
-- **Per-athlete view:** maxes and load adjustments (editable), a history of what the rules changed and why, the program, the training log, videos, progress charts, private notes, and load rounding (e.g. 2.5 kg).
-- **Video review:** slow motion (0.25×/0.5×), frame stepping, and a feedback thread per video.
-- Exercise library (23 rugby/S&C starter exercises) with cues and demo links.
+The app is split into four sections, each with its own tab: **Training, Nutrition, Recovery, Testing**. The coach also has a **Squad** tab (inbox + athletes). Every athlete page has tabs for all four sections, so you can see one athlete's full picture in one place.
 
-**For the athlete**
-- **Today:** the next session with the loads already calculated for them.
-- **Session logging:** weight / reps / RIR per set, times for sprints, heights/distances for jumps, a rest timer, "last time" numbers, and the option to film a set from the session screen. Drafts are saved on the phone if the app is closed mid-session.
-- After a session they see what their program changed ("Back Squat: +2.5 kg").
-- Form-check uploads, a feedback thread per session/video, and a general chat with the coach.
-- Progress charts (e1RM, top set, volume, best times / jump heights) and their own maxes.
+### Training
+- **Programs:** weeks → sessions → exercises. Loads can be set as **% of max**, **RIR** (load worked out from the athlete's max using the RPE/RIR chart), **RPE**, **fixed kg**, **bodyweight** or **no load**. Speed, power and conditioning work uses numeric targets (e.g. 10 m in 1.85 s).
+- **Progression rules you write yourself**, e.g. "if all reps done and RIR ≥ target + 2 → add 5 kg", "after 2 failed sessions → −10 %", "if e1RM beats max → update max", "if sprints are > 5 % off target → flag me". Attach a rule per athlete, and override it per exercise if needed.
+- **Athletes:** see today's session with the loads already worked out, log sets with a rest timer, film a set from the session screen, and see what their program changed afterwards.
+- **Form checks:** slow motion and frame stepping, with a feedback thread on every video and session.
+
+### Nutrition
+- **Food log** by meal, with a calorie ring and protein/carb/fat bars against the athlete's targets. Recent foods can be re-added in one tap.
+- **Targets (Mifflin-St Jeor):** resting energy = 10·kg + 6.25·cm − 5·age + 5 (male) / −161 (female). This is multiplied by an activity level to get maintenance, then adjusted for the athlete's goal: **lose / maintain / gain** at a chosen kg per week (7,700 kcal per kg). Protein is set in g/kg, fat as a % of calories, and carbs fill the rest. The coach can pin a calorie target that overrides the calculation.
+- **Bodyweight** log with a trend chart.
+- **MyFitnessPal:** MFP doesn't offer a public connection for other apps, so athletes upload MFP's **Nutrition Summary CSV export** instead (Reports → Export data on myfitnesspal.com, Premium only). Re-importing the same days replaces them rather than double counting.
+- **Coach view:** a squad table of each athlete's target vs 7-day average intake, protein, days logged and 28-day weight change.
+
+### Recovery
+- **Daily readiness check-in:** hours of sleep, plus sleep quality, energy, soreness, stress and mood on a 1-5 scale. These make a 0-100 score, and less than 7 h of sleep takes points off. Low scores appear in the coach's inbox.
+- **Injury reports:** body area, side, pain 0-10, and whether the athlete can train (full / modified / unavailable). Each report has its own message thread with the coach. The coach moves it through New → Monitoring → Rehab → Resolved.
+- **Protocols:** stretching, mobility, prehab, rehab and recovery routines, each a list of exercises with dose, cues and an optional demo link. Six starter protocols are included. The coach assigns protocols to athletes with a frequency, and athletes tick them off each day.
+
+### Testing
+- Rep maxes for the main lifts: **Back Squat, Bench Press, Deadlift, Power Clean, Overhead Press, Weighted Chin-up**. Any other lift can be tested too.
+- Each test records weight × reps with an estimated 1RM, relative strength (× bodyweight), and an optional **video of the lift**. The coach can verify a test, and the full history is kept.
+- A tested max can be used straight away as the max that % and RIR training loads are calculated from.
+- **Coach view:** a squad testing board showing every athlete's best on each lift, in kg or × bodyweight.
 
 ## Run it locally
 
@@ -71,6 +77,9 @@ server/
   db.js               SQLite schema
   lib/loads.js        % / RIR / RPE load maths, e1RM, rounding
   lib/progression.js  rule engine: session metrics → conditions → actions, plus presets
+  lib/nutrition.js    Mifflin-St Jeor targets, MyFitnessPal CSV parser
+  lib/recovery.js     readiness score
+  routes/             nutrition, recovery (readiness, injuries, protocols), testing APIs
   seed.js             demo data
 client/src/
   pages/              coach + athlete screens

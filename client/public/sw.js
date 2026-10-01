@@ -1,5 +1,5 @@
 // Minimal offline support: cache the app shell, always go to the network for API calls.
-const CACHE = 'training-shell-v1';
+const CACHE = 'training-shell-v2';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icon.svg'])));

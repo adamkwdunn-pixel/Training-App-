@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
+import { Brand } from '../components/Layout.jsx';
 
 export default function Login() {
   const { signIn } = useAuth();
@@ -29,10 +30,8 @@ export default function Login() {
   return (
     <div className="auth-page">
       <form className="auth-card stack" onSubmit={submit}>
-        <div className="brand big">
-          <img src="/icon.svg" alt="" width="44" height="44" />
-          <span>Squad Training</span>
-        </div>
+        <Brand big />
+        <p className="auth-tag">Training · Nutrition · Recovery · Testing</p>
         <div className="segmented">
           <button type="button" className={mode === 'login' ? 'on' : ''} onClick={() => setMode('login')}>Sign in</button>
           <button type="button" className={mode === 'athlete' ? 'on' : ''} onClick={() => setMode('athlete')}>Join team</button>

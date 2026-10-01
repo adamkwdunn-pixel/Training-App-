@@ -3,11 +3,14 @@ import { useAuth } from '../App.jsx';
 import { describeRx, fmtDate, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
+import { ScoreChip } from '../components/Ring.jsx';
 
 export default function AthleteHome() {
   const { user, coach } = useAuth();
   const { data: plan, error } = useApi(`/athletes/${user.id}/plan`);
   const { data: inbox } = useApi('/inbox');
+  const { data: ready } = useApi(`/athletes/${user.id}/readiness?days=1`);
+  const { data: food } = useApi(`/athletes/${user.id}/nutrition`);
 
   if (!plan) return <Loading error={error} />;
   const active = plan.assignments;
@@ -15,6 +18,24 @@ export default function AthleteHome() {
   return (
     <>
       <PageHeader title={`Hi ${user.name.split(' ')[0]}`} sub={coach ? `Coached by ${coach.name}` : 'Not linked to a coach'} />
+
+      <div className="grid2" style={{ marginBottom: 6 }}>
+        <Link to="/recovery" className="card flat row" style={{ margin: 0, border: '1px solid var(--line)' }}>
+          {ready?.today ? <ScoreChip score={ready.today.score} /> : <Icon name="heart" />}
+          <div className="grow">
+            <strong>{ready?.today ? 'Readiness logged' : 'Daily check-in'}</strong>
+            <div className="small muted">{ready?.today ? 'Tap to update' : 'Sleep, soreness, energy — 30 seconds'}</div>
+          </div>
+          {!ready?.today && <span className="dot-new" />}
+        </Link>
+        <Link to="/nutrition" className="card flat row" style={{ margin: 0, border: '1px solid var(--line)' }}>
+          <Icon name="apple" />
+          <div className="grow">
+            <strong className="tabular">{Math.round(food?.totals.kcal || 0)}{food?.targets.kcal ? ` / ${food.targets.kcal}` : ''} kcal</strong>
+            <div className="small muted">{food?.targets.kcal ? `Protein ${Math.round(food.totals.protein)} / ${food.targets.protein} g` : 'Set up your nutrition targets'}</div>
+          </div>
+        </Link>
+      </div>
 
       {active.length === 0 && <Empty>No program yet — your coach will assign one soon.</Empty>}
       {active.map((asg) => (

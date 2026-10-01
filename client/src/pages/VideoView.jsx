@@ -52,7 +52,8 @@ export default function VideoView() {
         <button className="btn small" onClick={() => step(-1)}>◀ frame</button>
         <button className="btn small" onClick={() => step(1)}>frame ▶</button>
       </div>
-      {v.note && <p className="card">“{v.note}”</p>}
+      {v.test_label && <p className="small"><span className="badge solid">Max test</span> {v.test_label}</p>}
+      {v.note && <p className="card flat">“{v.note}”</p>}
       {v.cues && <p className="small muted">Cues: {v.cues}</p>}
       {v.workout_log_id && <p className="small"><Link to={`/logs/${v.workout_log_id}`}>View the session this was filmed in →</Link></p>}
 

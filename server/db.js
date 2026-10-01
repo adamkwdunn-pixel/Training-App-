@@ -167,13 +167,123 @@ CREATE TABLE IF NOT EXISTS comments (
   id INTEGER PRIMARY KEY,
   athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  target_type TEXT NOT NULL CHECK (target_type IN ('general','workout','video')),
+  target_type TEXT NOT NULL CHECK (target_type IN ('general','workout','video','injury')),
   target_id INTEGER,
   body TEXT NOT NULL,
   read_by_recipient INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ---------- nutrition ----------
+CREATE TABLE IF NOT EXISTS nutrition_profiles (
+  athlete_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  activity REAL NOT NULL DEFAULT 1.55,
+  goal TEXT NOT NULL DEFAULT 'maintain',      -- maintain | gain | lose
+  rate REAL NOT NULL DEFAULT 0.25,            -- kg per week for gain / lose
+  protein_g_per_kg REAL NOT NULL DEFAULT 2.0,
+  fat_pct REAL NOT NULL DEFAULT 25,
+  kcal_override REAL,                         -- coach can pin a calorie target
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS food_entries (
+  id INTEGER PRIMARY KEY,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  eaten_on TEXT NOT NULL,
+  meal TEXT NOT NULL DEFAULT 'Snacks',
+  name TEXT NOT NULL,
+  quantity TEXT,
+  kcal REAL NOT NULL DEFAULT 0,
+  protein REAL NOT NULL DEFAULT 0,
+  carbs REAL NOT NULL DEFAULT 0,
+  fat REAL NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'manual',      -- manual | mfp
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bodyweight_logs (
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  measured_on TEXT NOT NULL,
+  weight REAL NOT NULL,
+  PRIMARY KEY (athlete_id, measured_on)
+);
+
+-- ---------- recovery ----------
+CREATE TABLE IF NOT EXISTS readiness (
+  id INTEGER PRIMARY KEY,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  sleep_hours REAL,
+  sleep_quality INTEGER,
+  energy INTEGER,
+  soreness INTEGER,
+  stress INTEGER,
+  mood INTEGER,
+  score INTEGER,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (athlete_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS injuries (
+  id INTEGER PRIMARY KEY,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  area TEXT NOT NULL,
+  side TEXT,                                  -- left | right | both | n/a
+  description TEXT,
+  pain INTEGER,                               -- 0-10
+  status TEXT NOT NULL DEFAULT 'new',         -- new | monitoring | rehab | resolved
+  availability TEXT NOT NULL DEFAULT 'modified', -- full | modified | unavailable
+  reported_on TEXT NOT NULL,
+  resolved_on TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS protocols (
+  id INTEGER PRIMARY KEY,
+  coach_id INTEGER NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'mobility',  -- mobility | prehab | rehab | recovery
+  description TEXT,
+  items TEXT NOT NULL DEFAULT '[]'            -- JSON [{ name, dose, notes, video_url }]
+);
+
+CREATE TABLE IF NOT EXISTS protocol_assignments (
+  id INTEGER PRIMARY KEY,
+  protocol_id INTEGER NOT NULL REFERENCES protocols(id) ON DELETE CASCADE,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  frequency TEXT,
+  note TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS protocol_completions (
+  assignment_id INTEGER NOT NULL REFERENCES protocol_assignments(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  PRIMARY KEY (assignment_id, day)
+);
+
+-- ---------- testing ----------
+CREATE TABLE IF NOT EXISTS test_results (
+  id INTEGER PRIMARY KEY,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+  tested_on TEXT NOT NULL,
+  weight REAL NOT NULL,
+  reps INTEGER NOT NULL DEFAULT 1,
+  e1rm REAL,
+  bodyweight REAL,
+  video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+  notes TEXT,
+  verified INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_food_day ON food_entries(athlete_id, eaten_on);
+CREATE INDEX IF NOT EXISTS idx_readiness ON readiness(athlete_id, day);
+CREATE INDEX IF NOT EXISTS idx_tests ON test_results(athlete_id, exercise_id, tested_on);
 CREATE INDEX IF NOT EXISTS idx_logs_athlete ON workout_logs(athlete_id, performed_on);
 CREATE INDEX IF NOT EXISTS idx_sets_log ON set_logs(workout_log_id);
 CREATE INDEX IF NOT EXISTS idx_comments_target ON comments(athlete_id, target_type, target_id);
@@ -185,7 +295,26 @@ export function openDb(file = process.env.DB_FILE || path.join(DATA_DIR, 'traini
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+// Bring databases created by earlier versions up to date.
+function migrate(db) {
+  const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
+  for (const [col, type] of [['sex', 'TEXT'], ['birth_date', 'TEXT'], ['height_cm', 'REAL']]) {
+    if (!cols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
+  }
+  // Comments gained the 'injury' thread type; SQLite can't alter a CHECK, so rebuild the table.
+  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'comments'").get()?.sql || '';
+  if (!sql.includes("'injury'")) {
+    tx(db, () => {
+      db.exec('ALTER TABLE comments RENAME TO comments_old');
+      db.exec(SCHEMA);
+      db.exec('INSERT INTO comments SELECT * FROM comments_old; DROP TABLE comments_old;');
+    });
+    db.exec(SCHEMA);
+  }
 }
 
 /** Run fn inside a transaction. */

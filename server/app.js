@@ -7,6 +7,9 @@ import { UPLOAD_DIR, tx } from './db.js';
 import { authenticate, hashPassword, verifyPassword, issueToken, newInviteCode, publicUser } from './auth.js';
 import { targetLoad, estimate1RM } from './lib/loads.js';
 import { computeMetrics, applyRule, METRICS, OPS, ACTIONS, PRESET_RULES } from './lib/progression.js';
+import { registerTesting, ensureMainLifts } from './routes/testing.js';
+import { registerNutrition } from './routes/nutrition.js';
+import { registerRecovery, seedProtocols } from './routes/recovery.js';
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -25,6 +28,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const LOAD_TYPES = ['percent', 'rir', 'rpe', 'fixed', 'bodyweight', 'none'];
 const CATEGORIES = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'other'];
 const EXERCISE_METRICS = ['load', 'time', 'distance', 'height', 'reps', 'velocity'];
+const COMMENT_TYPES = ['general', 'workout', 'video', 'injury'];
 
 export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300) } = {}) {
   const app = express();
@@ -744,11 +748,15 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       const exerciseId = num(req.body.exercise_id);
       if (exerciseId) ownedBy('exercises', exerciseId, athlete.coach_id, 'Exercise');
       const logId = num(req.body.workout_log_id);
+      if (req.body.test_id && !q('SELECT 1 FROM test_results WHERE id = ? AND athlete_id = ?').get(num(req.body.test_id), athlete.id)) fail(400, 'Unknown test');
       if (logId && !q('SELECT 1 FROM workout_logs WHERE id = ? AND athlete_id = ?').get(logId, athlete.id)) fail(400, 'Unknown workout');
       const info = q('INSERT INTO videos (athlete_id, exercise_id, workout_log_id, filename, mime, size, note) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         athlete.id, exerciseId, logId, req.file.filename, req.file.mimetype, req.file.size, str(req.body.note),
       );
-      res.status(201).json({ id: Number(info.lastInsertRowid) });
+      const videoId = Number(info.lastInsertRowid);
+      const testId = num(req.body.test_id);
+      if (testId) q('UPDATE test_results SET video_id = ? WHERE id = ? AND athlete_id = ?').run(videoId, testId, athlete.id);
+      res.status(201).json({ id: videoId });
     } catch (e) {
       fs.rm(req.file.path, () => {});
       throw e;
@@ -779,7 +787,9 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
 
   app.get('/api/videos/:id', (req, res) => {
     const v = videoFor(req, req.params.id);
-    const meta = q(`SELECT v.*, e.name AS exercise_name, e.cues, u.name AS athlete_name FROM videos v JOIN users u ON u.id = v.athlete_id
+    const meta = q(`SELECT v.*, e.name AS exercise_name, e.cues, u.name AS athlete_name,
+        (SELECT t.weight || ' kg × ' || t.reps FROM test_results t WHERE t.video_id = v.id) AS test_label
+      FROM videos v JOIN users u ON u.id = v.athlete_id
       LEFT JOIN exercises e ON e.id = v.exercise_id WHERE v.id = ?`).get(v.id);
     res.json({ video: meta });
   });
@@ -810,7 +820,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   app.get('/api/comments', (req, res) => {
     const u = requireUser(req);
     const a = athleteFor(req, req.query.athlete_id ?? u.id);
-    const type = ['general', 'workout', 'video'].includes(req.query.target_type) ? req.query.target_type : null;
+    const type = COMMENT_TYPES.includes(req.query.target_type) ? req.query.target_type : null;
     const targetId = num(req.query.target_id);
     const rows = q(`SELECT c.*, u.name AS author_name, u.role AS author_role FROM comments c JOIN users u ON u.id = c.author_id
       WHERE c.athlete_id = ? AND (? IS NULL OR c.target_type = ?) AND (? IS NULL OR c.target_id = ?) ORDER BY c.id`).all(a.id, type, type, targetId, targetId);
@@ -825,10 +835,11 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     const b = req.body || {};
     const a = athleteFor(req, b.athlete_id ?? u.id);
     if (!b.body || !String(b.body).trim()) fail(400, 'Write a message first');
-    const type = ['general', 'workout', 'video'].includes(b.target_type) ? b.target_type : 'general';
+    const type = COMMENT_TYPES.includes(b.target_type) ? b.target_type : 'general';
     const targetId = type === 'general' ? null : num(b.target_id);
     if (type === 'workout' && !q('SELECT 1 FROM workout_logs WHERE id = ? AND athlete_id = ?').get(targetId, a.id)) fail(400, 'Unknown workout');
     if (type === 'video' && !q('SELECT 1 FROM videos WHERE id = ? AND athlete_id = ?').get(targetId, a.id)) fail(400, 'Unknown video');
+    if (type === 'injury' && !q('SELECT 1 FROM injuries WHERE id = ? AND athlete_id = ?').get(targetId, a.id)) fail(400, 'Unknown injury');
     const info = q('INSERT INTO comments (athlete_id, author_id, target_type, target_id, body) VALUES (?, ?, ?, ?, ?)').run(a.id, u.id, type, targetId, String(b.body).trim());
     if (type === 'video' && u.role === 'coach') q("UPDATE videos SET status = 'reviewed' WHERE id = ?").run(targetId);
     res.status(201).json({ id: Number(info.lastInsertRowid) });
@@ -847,6 +858,10 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
           JOIN exercises e ON e.id = ev.exercise_id WHERE u.coach_id = ? AND ev.flagged = 1 ORDER BY ev.id DESC LIMIT 50`).all(u.id),
         messages: q(`SELECT c.*, u.name AS athlete_name FROM comments c JOIN users u ON u.id = c.athlete_id
           WHERE u.coach_id = ? AND c.author_id = c.athlete_id AND c.read_by_recipient = 0 ORDER BY c.id DESC LIMIT 50`).all(u.id),
+        injuries: q(`SELECT i.*, u.name AS athlete_name FROM injuries i JOIN users u ON u.id = i.athlete_id
+          WHERE u.coach_id = ? AND i.status = 'new' ORDER BY i.id DESC`).all(u.id),
+        low_readiness: q(`SELECT r.*, u.name AS athlete_name FROM readiness r JOIN users u ON u.id = r.athlete_id
+          WHERE u.coach_id = ? AND r.day = ? AND r.score < 60 ORDER BY r.score`).all(u.id, today()),
       });
     } else {
       res.json({
@@ -857,6 +872,12 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       });
     }
   });
+
+  // ---------- nutrition, recovery, testing ----------
+  const ctx = { db, q, fail, num, str, today, tx, requireUser, requireCoach, athleteFor, ownedBy, getState, saveState };
+  registerNutrition(app, ctx);
+  registerRecovery(app, ctx);
+  registerTesting(app, ctx);
 
   // ---------- errors ----------
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')));
@@ -903,4 +924,6 @@ export function seedCoachDefaults(db, coachId) {
   for (const [name, cat, metric, cues] of starter) ex.run(coachId, name, cat, metric, cues);
   const rule = db.prepare('INSERT INTO progression_rules (coach_id, name, description, config) VALUES (?, ?, ?, ?)');
   for (const r of PRESET_RULES) rule.run(coachId, r.name, r.description, JSON.stringify(r.config));
+  ensureMainLifts(db, coachId);
+  seedProtocols(db, coachId);
 }

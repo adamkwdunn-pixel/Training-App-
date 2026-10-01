@@ -21,6 +21,9 @@ import History from './pages/History.jsx';
 import Progress from './pages/Progress.jsx';
 import Messages from './pages/Messages.jsx';
 import Profile from './pages/Profile.jsx';
+import { MyFood, MyTargets, MyWeight, NutritionSquad } from './pages/NutritionPages.jsx';
+import { MyCheckIn, MyInjuries, MyProtocols, ProtocolLibrary, RecoverySquad } from './pages/RecoveryPages.jsx';
+import { MyTesting, TestingSquad } from './pages/TestingPages.jsx';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -79,6 +82,10 @@ export default function App() {
               <Route path="/programs/:id/days/:dayId" element={<DayEditor />} />
               <Route path="/rules" element={<Rules />} />
               <Route path="/exercises" element={<Exercises />} />
+              <Route path="/nutrition" element={<NutritionSquad />} />
+              <Route path="/recovery" element={<RecoverySquad />} />
+              <Route path="/recovery/protocols" element={<ProtocolLibrary />} />
+              <Route path="/testing" element={<TestingSquad />} />
             </>
           ) : (
             <>
@@ -88,6 +95,13 @@ export default function App() {
               <Route path="/history" element={<History />} />
               <Route path="/progress" element={<Progress />} />
               <Route path="/messages" element={<Messages />} />
+              <Route path="/nutrition" element={<MyFood />} />
+              <Route path="/nutrition/targets" element={<MyTargets />} />
+              <Route path="/nutrition/weight" element={<MyWeight />} />
+              <Route path="/recovery" element={<MyCheckIn />} />
+              <Route path="/recovery/injuries" element={<MyInjuries />} />
+              <Route path="/recovery/protocols" element={<MyProtocols />} />
+              <Route path="/testing" element={<MyTesting />} />
             </>
           )}
           <Route path="/videos" element={<Videos />} />

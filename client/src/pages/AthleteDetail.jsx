@@ -8,8 +8,11 @@ import MaxesTable from '../components/MaxesTable.jsx';
 import ProgressView from '../components/ProgressView.jsx';
 import Thread from '../components/Thread.jsx';
 import Icon from '../components/Icon.jsx';
+import { FoodLog, IntakeTrend, NutritionTargets } from '../components/Nutrition.jsx';
+import { AssignedProtocols, Injuries, ReadinessFor } from '../components/Recovery.jsx';
+import TestingView from '../components/Testing.jsx';
 
-const TABS = ['overview', 'program', 'log', 'videos', 'progress', 'messages', 'settings'];
+const TABS = ['overview', 'program', 'log', 'videos', 'progress', 'nutrition', 'recovery', 'testing', 'messages', 'settings'];
 
 export default function AthleteDetail() {
   const { id } = useParams();
@@ -61,6 +64,15 @@ export default function AthleteDetail() {
       {tab === 'log' && <LogTab athleteId={a.id} />}
       {tab === 'videos' && <VideosTab athleteId={a.id} />}
       {tab === 'progress' && <ProgressView athleteId={a.id} />}
+      {tab === 'nutrition' && <NutritionTab athleteId={a.id} />}
+      {tab === 'recovery' && (
+        <>
+          <section><h2>Injuries</h2><Injuries athleteId={a.id} /></section>
+          <section><h2>Assigned protocols</h2><AssignedProtocols athleteId={a.id} /></section>
+          <section><ReadinessFor athleteId={a.id} /></section>
+        </>
+      )}
+      {tab === 'testing' && <TestingView athleteId={a.id} />}
       {tab === 'messages' && (
         <section>
           <h2>Messages with {a.name.split(' ')[0]}</h2>
@@ -68,6 +80,22 @@ export default function AthleteDetail() {
         </section>
       )}
       {tab === 'settings' && <SettingsTab athlete={a} reload={reload} />}
+    </>
+  );
+}
+
+function NutritionTab({ athleteId }) {
+  const [view, setView] = useState('targets');
+  return (
+    <>
+      <div className="segmented" style={{ maxWidth: 380 }}>
+        {[['targets', 'Targets'], ['trend', '2-week trend'], ['log', 'Food log']].map(([k, l]) => (
+          <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>
+        ))}
+      </div>
+      {view === 'targets' && <NutritionTargets athleteId={athleteId} />}
+      {view === 'trend' && <IntakeTrend athleteId={athleteId} />}
+      {view === 'log' && <FoodLog athleteId={athleteId} />}
     </>
   );
 }
