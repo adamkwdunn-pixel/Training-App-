@@ -3,7 +3,12 @@ import { useAuth } from '../App.jsx';
 import { fmtDate, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import { BodyFat, Bodyweight, NutritionTargets } from '../components/Nutrition.jsx';
+import FoodLog from '../components/FoodLog.jsx';
 
+export function MyFood() {
+  const { user } = useAuth();
+  return (<><PageHeader title="Food log" sub="Describe what you ate and see how it stacks up against your targets" /><FoodLog athleteId={user.id} /></>);
+}
 export function MyTargets() {
   const { user } = useAuth();
   return (<><PageHeader title="Targets" sub="Calories and macros from the equations — adjust and see it update" /><NutritionTargets athleteId={user.id} /></>);
@@ -31,7 +36,7 @@ export function NutritionSquad() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Athlete</th><th>Goal</th><th>Calories</th><th>Protein</th><th>BW (7-d avg)</th><th>Rate kg/wk</th><th>Body fat</th><th>Lean</th></tr>
+                <tr><th>Athlete</th><th>Goal</th><th>Target kcal</th><th>Eaten (7-d avg)</th><th>Protein</th><th>BW (7-d avg)</th><th>Rate kg/wk</th><th>Body fat</th><th>Lean</th></tr>
               </thead>
               <tbody>
                 {data.athletes.map((a) => {
@@ -42,7 +47,11 @@ export function NutritionSquad() {
                       <td><Link to={`/athletes/${a.id}?tab=nutrition`}>{a.name}</Link>{a.position && <div className="tiny muted">{a.position}</div>}</td>
                       <td>{GOAL[a.goal]}{a.goal !== 'maintain' ? <span className="muted tiny"> {a.rate}/wk</span> : ''}</td>
                       <td>{a.targets.kcal ?? <span className="muted tiny">needs profile</span>}{a.targets.overridden && <span className="tiny muted"> (set)</span>}</td>
-                      <td>{a.targets.protein != null ? `${a.targets.protein} g` : '—'}</td>
+                      <td>
+                        {a.avg_kcal_7d ?? '—'}
+                        {a.avg_kcal_7d != null && <div className="tiny muted">{a.food_days_7d}/7 days logged</div>}
+                      </td>
+                      <td>{a.avg_protein_7d != null ? `${a.avg_protein_7d}` : '—'}{a.targets.protein != null ? <span className="tiny muted"> / {a.targets.protein} g</span> : ''}</td>
                       <td>{a.trend ?? '—'}{a.last_weigh_in && <div className="tiny muted">{fmtDate(a.last_weigh_in)}</div>}</td>
                       <td style={{ color: off ? 'var(--warn)' : undefined }}>{a.rate_28d != null ? `${a.rate_28d > 0 ? '+' : ''}${a.rate_28d}` : '—'}</td>
                       <td>{a.body_fat_pct != null ? `${a.body_fat_pct}%` : '—'}{a.body_fat_on && <div className="tiny muted">{fmtDate(a.body_fat_on)}</div>}</td>

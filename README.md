@@ -49,6 +49,8 @@ Athletes enter their own details, and the app works everything out and shows the
   - Each measurement shows fat and lean mass, with trends charted for one method at a time. The coach can enter measurements for athletes (e.g. skinfolds on testing day).
 - **Coach view:** a squad table of each athlete's goal, targets, 7-day average bodyweight, 4-week rate vs goal, body fat and lean mass.
 
+- **Food log with AI estimates:** athletes describe what they ate in plain words. Claude (Anthropic's model `claude-opus-5-5`, via the official SDK with structured outputs) breaks it into foods with estimated calories, protein, carbs and fat, and lists any portion sizes it had to assume. The athlete checks or adjusts the numbers and saves them. The day is totalled against their targets with a calorie ring and macro bars, and the coach sees each athlete's food log plus 7-day average intake on the squad nutrition table. Needs `ANTHROPIC_API_KEY`; without it, athletes enter the numbers manually.
+
 ### Recovery
 - **Daily readiness check-in:** hours of sleep, plus sleep quality, energy, soreness, stress and mood on a 1-5 scale. These make a 0-100 score, and less than 7 h of sleep takes points off. Low scores appear in the coach's inbox.
 - **Injury reports:** body area, side, pain 0-10, and whether the athlete can train (full / modified / unavailable). Each report has its own message thread with the coach. The coach moves it through New → Monitoring → Rehab → Resolved.
@@ -108,6 +110,8 @@ Any host that runs Node or Docker and gives you a **persistent disk** works, for
 | `MAX_UPLOAD_MB` | `300` | Max video size |
 | `COACH_SIGNUP_KEY` | *(unset)* | Lets extra coaches register; without it only the first coach can |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` (or `SMTP_URL`) | *(unset)* | Sends athletes their login details by email. Without it, the coach copies/shares them instead |
+| `ANTHROPIC_API_KEY` | *(unset)* | Turns on AI food estimates in the food log |
+| `AI_ESTIMATES_PER_DAY` | `40` | Daily cap on AI estimates per athlete |
 | `APP_URL` | *(this site's address)* | The link put in emails, if it should differ from the address the coach is using |
 | `SEED_DEMO` | *(unset)* | `true` loads the demo squad the first time the server starts on an empty database |
 | `DEMO_COACH_NAME` / `DEMO_COACH_EMAIL` / `DEMO_COACH_PASSWORD` | `Adam` / `coach@demo.app` / `password123` | The coach account the demo creates |
@@ -129,6 +133,7 @@ shared/
   bodyfat.js          US Navy, Jackson-Pollock 3/7-site, Siri
 server/notify.js      notification inbox, Web Push, daily check-in reminders
 server/mail.js        login-details emails (SMTP)
+server/lib/food-ai.js AI meal estimates (Claude, structured outputs)
   seed.js             demo data
 client/src/
   pages/              coach + athlete screens

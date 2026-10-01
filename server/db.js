@@ -190,6 +190,22 @@ CREATE TABLE IF NOT EXISTS nutrition_profiles (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- What an athlete ate: their own words, plus the (AI-estimated or typed) energy and macros.
+CREATE TABLE IF NOT EXISTS meal_logs (
+  id INTEGER PRIMARY KEY,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  eaten_on TEXT NOT NULL,
+  meal TEXT NOT NULL DEFAULT 'Snack',
+  description TEXT NOT NULL,
+  items TEXT NOT NULL DEFAULT '[]',           -- JSON [{ name, quantity, kcal, protein, carbs, fat }]
+  kcal REAL NOT NULL DEFAULT 0,
+  protein REAL NOT NULL DEFAULT 0,
+  carbs REAL NOT NULL DEFAULT 0,
+  fat REAL NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'ai',          -- ai | manual
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS bodyweight_logs (
   athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   measured_on TEXT NOT NULL,
@@ -320,6 +336,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications ON notifications(user_id, read, id);
+CREATE INDEX IF NOT EXISTS idx_meals ON meal_logs(athlete_id, eaten_on);
 CREATE INDEX IF NOT EXISTS idx_bodycomp ON body_measurements(athlete_id, measured_on);
 CREATE INDEX IF NOT EXISTS idx_readiness ON readiness(athlete_id, day);
 CREATE INDEX IF NOT EXISTS idx_tests ON test_results(athlete_id, exercise_id, tested_on);

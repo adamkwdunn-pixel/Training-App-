@@ -12,6 +12,7 @@ import { BodyFat, Bodyweight, NutritionTargets } from '../components/Nutrition.j
 import { AssignedProtocols, Injuries, ReadinessFor } from '../components/Recovery.jsx';
 import TestingView from '../components/Testing.jsx';
 import LoginDetails from '../components/LoginDetails.jsx';
+import FoodLog from '../components/FoodLog.jsx';
 import { fmtSleep } from '../../../shared/sleep.js';
 
 const TABS = ['overview', 'details', 'program', 'log', 'videos', 'progress', 'nutrition', 'recovery', 'testing', 'messages'];
@@ -98,12 +99,13 @@ function NutritionTab({ athleteId }) {
   const [view, setView] = useState('targets');
   return (
     <>
-      <div className="segmented" style={{ maxWidth: 380 }}>
-        {[['targets', 'Targets'], ['weight', 'Bodyweight'], ['bodyfat', 'Body fat']].map(([k, l]) => (
+      <div className="segmented" style={{ maxWidth: 520 }}>
+        {[['food', 'Food log'], ['targets', 'Targets'], ['weight', 'Bodyweight'], ['bodyfat', 'Body fat']].map(([k, l]) => (
           <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>
         ))}
       </div>
       {view === 'targets' && <NutritionTargets athleteId={athleteId} />}
+      {view === 'food' && <FoodLog athleteId={athleteId} />}
       {view === 'weight' && <Bodyweight athleteId={athleteId} />}
       {view === 'bodyfat' && <BodyFat athleteId={athleteId} />}
     </>

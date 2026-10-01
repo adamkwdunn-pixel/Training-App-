@@ -18,7 +18,12 @@ const ATHLETE_SECTIONS = [
   },
   {
     key: 'nutrition', label: 'Nutrition', icon: 'apple', to: '/nutrition', match: ['/nutrition'],
-    subs: [{ to: '/nutrition', label: 'Targets' }, { to: '/nutrition/weight', label: 'Bodyweight' }, { to: '/nutrition/bodyfat', label: 'Body fat' }],
+    subs: [
+      { to: '/nutrition', label: 'Food log' },
+      { to: '/nutrition/targets', label: 'Targets' },
+      { to: '/nutrition/weight', label: 'Bodyweight' },
+      { to: '/nutrition/bodyfat', label: 'Body fat' },
+    ],
   },
   {
     key: 'recovery', label: 'Recovery', icon: 'heart', to: '/recovery', match: ['/recovery'],

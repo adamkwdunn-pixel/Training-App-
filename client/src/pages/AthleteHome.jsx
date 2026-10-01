@@ -11,7 +11,7 @@ export default function AthleteHome() {
   const { data: plan, error } = useApi(`/athletes/${user.id}/plan`);
   const { data: inbox } = useApi('/inbox');
   const { data: ready } = useApi(`/athletes/${user.id}/readiness?days=2&today=${today()}`);
-  const { data: food } = useApi(`/athletes/${user.id}/nutrition`);
+  const { data: food } = useApi(`/athletes/${user.id}/food?date=${today()}`);
 
   if (!plan) return <Loading error={error} />;
   const active = plan.assignments;
@@ -31,11 +31,11 @@ export default function AthleteHome() {
           </div>
           {!ready?.today && <span className="dot-new" />}
         </Link>
-        <Link to={food?.targets.kcal ? '/nutrition/weight' : '/nutrition'} className="card flat row" style={{ margin: 0, border: '1px solid var(--line)' }}>
+        <Link to="/nutrition" className="card flat row" style={{ margin: 0, border: '1px solid var(--line)' }}>
           <Icon name="apple" />
           <div className="grow">
-            <strong className="tabular">{food?.targets.kcal ? `${food.targets.kcal} kcal · P ${food.targets.protein} g` : 'Nutrition targets'}</strong>
-            <div className="small muted">{food?.weights.at(-1) ? `Bodyweight ${food.weights.at(-1).trend} kg (7-day avg)` : 'Set up your targets and log your weight'}</div>
+            <strong className="tabular">{Math.round(food?.totals.kcal || 0)}{food?.targets.kcal ? ` / ${food.targets.kcal}` : ''} kcal today</strong>
+            <div className="small muted">{food?.targets.protein ? `Protein ${Math.round(food.totals.protein)} / ${food.targets.protein} g · tap to log food` : 'Tap to log what you’ve eaten'}</div>
           </div>
         </Link>
       </div>

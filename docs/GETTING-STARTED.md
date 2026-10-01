@@ -106,6 +106,26 @@ Any other email provider that gives you SMTP details works the same way (Outlook
 
 ---
 
+## Turning on AI food estimates
+
+In **Nutrition → Food log**, athletes describe a meal in their own words (e.g. *"a chicken sandwich with about 100 g chicken breast, some mayonnaise and lettuce"*). The app uses Claude, Anthropic's AI, to estimate calories, protein, carbs and fat for each part of the meal. Athletes check the estimate, adjust it if they know better, and save it. Their day is then totalled against their targets.
+
+It needs an Anthropic API key, which is a pay-as-you-go account separate from any Claude subscription:
+
+1. Go to **console.anthropic.com**, sign up, and add a payment method under **Billing**.
+2. **Recommended:** under **Billing → Limits**, set a monthly spend limit (e.g. US$20), so costs can never run away.
+3. Go to **API keys → Create key**, name it "AD Rugby app", and copy the key. It starts with `sk-ant-`.
+4. In Render, open the service → **Environment** → **Add environment variable**:
+   - Key: `ANTHROPIC_API_KEY`
+   - Value: the key you copied
+5. **Save, rebuild, and deploy.** In the app, **Profile → Server status** should then show "AI food estimates: On".
+
+**Cost:** roughly 1–2 US cents per estimate. A squad of 30 logging three meals a day is about US$1–2 a day. Each athlete is capped at 40 estimates a day by default; you can change that with an `AI_ESTIMATES_PER_DAY` variable.
+
+Without a key, the food log still works: athletes type the calories and macros themselves.
+
+---
+
 ## Making changes and updates
 
 - **Things you change inside the app** (programs, rules, maxes, protocols…) are live immediately.

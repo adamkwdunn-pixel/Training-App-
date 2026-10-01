@@ -72,6 +72,7 @@ function ServerStatus({ system }) {
       <div className="kv small"><span className="muted">Data folder</span><span>{s.dir}</span></div>
       <div className="kv small"><span className="muted">App version</span><span>{system.version}</span></div>
       <div className="kv small"><span className="muted">Running since</span><span>{new Date(system.started_at).toLocaleString()}</span></div>
+      <div className="kv small"><span className="muted">AI food estimates</span><span>{system.ai_configured ? 'On ✓' : 'Off (add ANTHROPIC_API_KEY in Render)'}</span></div>
       <div className="kv small"><span className="muted">Login emails</span><span>{system.email_configured ? 'Set up ✓' : 'Not set up (details shown to copy/share)'}</span></div>
       {!ok && (
         <div className="small" style={{ lineHeight: 1.6 }}>

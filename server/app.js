@@ -16,6 +16,7 @@ import { registerNutrition } from './routes/nutrition.js';
 import { registerRecovery, seedProtocols } from './routes/recovery.js';
 import { createNotifier, registerNotifications, webPushSender } from './notify.js';
 import { createMailer, loginEmail, tempPassword } from './mail.js';
+import { createFoodEstimator } from './lib/food-ai.js';
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -36,7 +37,7 @@ const CATEGORIES = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'o
 const EXERCISE_METRICS = ['load', 'time', 'distance', 'height', 'reps', 'velocity'];
 const COMMENT_TYPES = ['general', 'workout', 'video', 'injury'];
 
-export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev', mailer = createMailer() } = {}) {
+export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev', mailer = createMailer(), estimator = createFoodEstimator() } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // behind Render's proxy: lets req.protocol report https
@@ -135,7 +136,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     const coach = u.coach_id ? q('SELECT id, name, email FROM users WHERE id = ?').get(u.coach_id) : null;
     // Coaches get a health summary so problems with hosting show up in the app, not as lost data.
     const system = u.role === 'coach' ? {
-      version, started_at: startedAt, storage, email_configured: mailer.configured,
+      version, started_at: startedAt, storage, email_configured: mailer.configured, ai_configured: !!estimator,
       push_keys: !!q("SELECT 1 FROM app_settings WHERE key = 'vapid'").get() || !!process.env.VAPID_PUBLIC_KEY,
     } : undefined;
     res.json({ user: publicUser(u), coach, system });
@@ -1087,7 +1088,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   });
 
   // ---------- nutrition, recovery, testing ----------
-  const ctx = { db, q, fail, num, str, today, tx, requireUser, requireCoach, athleteFor, ownedBy, getState, saveState, notify, first, clip };
+  const ctx = { db, q, fail, num, str, today, tx, requireUser, requireCoach, athleteFor, ownedBy, getState, saveState, notify, first, clip, estimator };
   registerNotifications(app, ctx);
   registerNutrition(app, ctx);
   registerRecovery(app, ctx);
@@ -1100,8 +1101,10 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? `Video is too large (max ${maxUploadMb} MB)` : err.message });
     }
     const status = err.status || 500;
-    if (status >= 500) console.error(err);
-    res.status(status).json({ error: status >= 500 ? 'Something went wrong' : err.message });
+    // Our own errors carry a message meant for the user (including 503 "not set up" ones); hide anything unexpected.
+    const expose = err instanceof HttpError || status < 500;
+    if (!expose) console.error(err);
+    res.status(status).json({ error: expose ? err.message : 'Something went wrong' });
   });
 
   return app;

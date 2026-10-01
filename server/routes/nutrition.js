@@ -3,7 +3,10 @@ import {
 } from '../../shared/nutrition.js';
 import { METHODS, composition, jacksonPollock, navyBodyFat, sitesFor } from '../../shared/bodyfat.js';
 
-export function registerNutrition(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, tx, notify, first }) {
+export const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-training', 'Post-training'];
+const DAILY_AI_LIMIT = Number(process.env.AI_ESTIMATES_PER_DAY || 40);
+
+export function registerNutrition(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, tx, notify, first, estimator }) {
   const latestBodyFat = (athleteId) => q('SELECT * FROM body_measurements WHERE athlete_id = ? ORDER BY measured_on DESC, id DESC LIMIT 1').get(athleteId);
 
   const profileOf = (a) => {
@@ -19,7 +22,68 @@ export function registerNutrition(app, { db, q, fail, num, str, today, requireUs
   const targetsOf = (p) => nutritionTargets({ ...p, height: p.height_cm });
   const weightsOf = (id) => withTrend(q('SELECT measured_on AS date, weight FROM bodyweight_logs WHERE athlete_id = ? ORDER BY measured_on').all(id));
 
-  app.get('/api/nutrition/meta', (_req, res) => res.json({ activity: ACTIVITY_LEVELS, goals: GOALS, equations: BMR_EQUATIONS, macro_modes: MACRO_MODES, methods: METHODS }));
+  app.get('/api/nutrition/meta', (_req, res) => res.json({ activity: ACTIVITY_LEVELS, goals: GOALS, equations: BMR_EQUATIONS, macro_modes: MACRO_MODES, methods: METHODS, meals: MEALS, ai_enabled: !!estimator }));
+
+  // ---------- food log ----------
+  const usage = new Map(); // `${userId}:${date}` -> estimates used today (resets on restart, which is fine for a soft cap)
+
+  app.post('/api/athletes/:id/food/estimate', async (req, res) => {
+    const u = requireUser(req);
+    athleteFor(req, req.params.id);
+    if (!estimator) fail(503, 'AI estimates aren’t switched on yet — enter the numbers yourself, or ask your coach to add an AI key.');
+    const text = String(req.body?.text || '').trim();
+    if (text.length < 3) fail(400, 'Describe what you ate first');
+    if (text.length > 1500) fail(400, 'That’s a long description — split it into separate meals');
+    const key = `${u.id}:${today()}`;
+    const used = usage.get(key) || 0;
+    if (used >= DAILY_AI_LIMIT) fail(429, `You’ve used today’s ${DAILY_AI_LIMIT} AI estimates — enter the numbers yourself for now.`);
+    usage.set(key, used + 1);
+    try {
+      res.json({ estimate: await estimator(text) });
+    } catch (e) {
+      usage.set(key, used); // failed attempts don't count
+      if (e.status) fail(e.status, e.message);
+      throw e;
+    }
+  });
+
+  app.get('/api/athletes/:id/food', (req, res) => {
+    const a = athleteFor(req, req.params.id);
+    const date = str(req.query.date) || today();
+    const entries = q('SELECT * FROM meal_logs WHERE athlete_id = ? AND eaten_on = ? ORDER BY id').all(a.id, date)
+      .map((m) => ({ ...m, items: JSON.parse(m.items || '[]') }));
+    const totals = entries.reduce((t, m) => ({ kcal: t.kcal + m.kcal, protein: t.protein + m.protein, carbs: t.carbs + m.carbs, fat: t.fat + m.fat }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+    const week = q(`SELECT eaten_on AS date, SUM(kcal) AS kcal, SUM(protein) AS protein FROM meal_logs
+      WHERE athlete_id = ? AND eaten_on > date(?, '-14 days') AND eaten_on <= ? GROUP BY eaten_on ORDER BY eaten_on`).all(a.id, date, date);
+    res.json({ date, entries, totals, targets: targetsOf(profileOf(a)), week });
+  });
+
+  app.post('/api/athletes/:id/food', (req, res) => {
+    const a = athleteFor(req, req.params.id);
+    const b = req.body || {};
+    const description = String(b.description || '').trim();
+    if (!description) fail(400, 'Describe what you ate');
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map((i) => ({
+      name: String(i.name || '').slice(0, 120), quantity: String(i.quantity || '').slice(0, 60),
+      kcal: Math.max(0, num(i.kcal) || 0), protein: Math.max(0, num(i.protein) || 0), carbs: Math.max(0, num(i.carbs) || 0), fat: Math.max(0, num(i.fat) || 0),
+    }));
+    const v = Object.fromEntries(['kcal', 'protein', 'carbs', 'fat'].map((k) => [k, Math.max(0, num(b[k]) ?? items.reduce((s, i) => s + i[k], 0))]));
+    if (!v.kcal && (v.protein || v.carbs || v.fat)) v.kcal = Math.round(v.protein * 4 + v.carbs * 4 + v.fat * 9);
+    if (v.kcal > 10000) fail(400, 'That’s more than 10,000 kcal for one meal — check the numbers');
+    const info = q(`INSERT INTO meal_logs (athlete_id, eaten_on, meal, description, items, kcal, protein, carbs, fat, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      a.id, str(b.eaten_on) || today(), MEALS.includes(b.meal) ? b.meal : 'Snack', description.slice(0, 1500), JSON.stringify(items),
+      Math.round(v.kcal), Math.round(v.protein), Math.round(v.carbs), Math.round(v.fat), b.source === 'manual' ? 'manual' : 'ai',
+    );
+    res.status(201).json({ id: Number(info.lastInsertRowid) });
+  });
+
+  app.delete('/api/food/:id', (req, res) => {
+    const m = q('SELECT * FROM meal_logs WHERE id = ?').get(Number(req.params.id)) || fail(404, 'Entry not found');
+    athleteFor(req, m.athlete_id);
+    q('DELETE FROM meal_logs WHERE id = ?').run(m.id);
+    res.json({ ok: true });
+  });
 
   app.get('/api/athletes/:id/nutrition', (req, res) => {
     const a = athleteFor(req, req.params.id);
@@ -170,10 +234,13 @@ export function registerNutrition(app, { db, q, fail, num, str, today, requireUs
       athletes: athletes.map((a) => {
         const p = profileOf(a);
         const weights = weightsOf(a.id);
+        const intake = q(`SELECT COUNT(*) AS days, AVG(k) AS kcal, AVG(p) AS protein FROM (
+          SELECT SUM(kcal) AS k, SUM(protein) AS p FROM meal_logs WHERE athlete_id = ? AND eaten_on > date('now', '-7 days') GROUP BY eaten_on)`).get(a.id);
         return {
           id: a.id, name: a.name, position: a.position, goal: p.goal, rate: p.rate, bodyweight: a.bodyweight,
           last_weigh_in: weights.at(-1)?.date ?? null, trend: weights.at(-1)?.trend ?? null, rate_28d: weeklyRate(weights, 28),
           body_fat_pct: p.body_fat_pct, body_fat_on: p.body_fat_on, lean_mass: p.lean_mass, targets: targetsOf(p),
+          food_days_7d: intake.days, avg_kcal_7d: intake.kcal != null ? Math.round(intake.kcal) : null, avg_protein_7d: intake.protein != null ? Math.round(intake.protein) : null,
         };
       }),
     });

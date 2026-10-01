@@ -21,7 +21,7 @@ import History from './pages/History.jsx';
 import Progress from './pages/Progress.jsx';
 import Messages from './pages/Messages.jsx';
 import Profile from './pages/Profile.jsx';
-import { MyBodyFat, MyTargets, MyWeight, NutritionSquad } from './pages/NutritionPages.jsx';
+import { MyBodyFat, MyFood, MyTargets, MyWeight, NutritionSquad } from './pages/NutritionPages.jsx';
 import { MyCheckIn, MyInjuries, MyProtocols, ProtocolLibrary, RecoverySquad } from './pages/RecoveryPages.jsx';
 import { MyTesting, TestingSquad } from './pages/TestingPages.jsx';
 import Notifications from './pages/Notifications.jsx';
@@ -123,7 +123,8 @@ export default function App() {
               <Route path="/history" element={<History />} />
               <Route path="/progress" element={<Progress />} />
               <Route path="/messages" element={<Messages />} />
-              <Route path="/nutrition" element={<MyTargets />} />
+              <Route path="/nutrition" element={<MyFood />} />
+              <Route path="/nutrition/targets" element={<MyTargets />} />
               <Route path="/nutrition/weight" element={<MyWeight />} />
               <Route path="/nutrition/bodyfat" element={<MyBodyFat />} />
               <Route path="/recovery" element={<MyCheckIn />} />
