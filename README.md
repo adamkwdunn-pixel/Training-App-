@@ -49,6 +49,8 @@ Athletes enter their own details, and the app works everything out and shows the
 - A tested max can be used straight away as the max that % and RIR training loads are calculated from.
 - **Coach view:** a squad testing board showing every athlete's best on each lift, in kg or × bodyweight.
 
+**New here? Read [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md)**. It walks through trying the app, hosting it online, and the path to the App Store and Google Play.
+
 ## Run it locally
 
 Requires **Node.js 22.5+** (uses Node's built-in SQLite, so there's no database server to install).
@@ -60,7 +62,7 @@ npm run seed     # optional: demo coach, 3 athletes, a 4-week program, some logg
 npm start        # http://localhost:3000
 ```
 
-Demo logins (after `npm run seed`): coach `coach@demo.app`, athletes `sam@demo.app`, `jordan@demo.app`, `alex@demo.app`. Password for all: `password123`.
+Demo logins (after `npm run seed`): coach **Adam** `coach@demo.app`, athletes `sam@demo.app`, `jordan@demo.app`, `alex@demo.app`. Password for all: `password123`.
 
 To develop with hot reload, run `npm run dev` (the web app is on http://localhost:5173 and proxies to the API). Run the tests with `npm test`.
 
@@ -74,7 +76,8 @@ To develop with hot reload, run `npm run dev` (the web app is on http://localhos
 Any host that runs Node or Docker and gives you a **persistent disk** works, for example Render, Railway, Fly.io, or a small VPS. The disk is needed because the database and videos live in `DATA_DIR`.
 
 - **Docker:** `docker build -t squad-training . && docker run -p 3000:3000 -v squad-data:/data squad-training`
-- **Render / Railway (no Docker):** build command `npm install && npm run build`, start command `npm start`. Mount a persistent disk and set `DATA_DIR` to its path.
+- **Render (recommended):** the included `render.yaml` sets everything up. See the getting-started guide.
+- **Railway / others (no Docker):** build command `npm install && npm run build`, start command `npm start`. Mount a persistent disk and set `DATA_DIR` to its path.
 - Use **HTTPS**, which these hosts provide automatically. It's required for "Add to Home Screen" and phone camera uploads.
 
 | Env var | Default | Purpose |
@@ -83,6 +86,8 @@ Any host that runs Node or Docker and gives you a **persistent disk** works, for
 | `DATA_DIR` | `./data` | SQLite database + uploaded videos |
 | `MAX_UPLOAD_MB` | `300` | Max video size |
 | `COACH_SIGNUP_KEY` | *(unset)* | Lets extra coaches register; without it only the first coach can |
+| `SEED_DEMO` | *(unset)* | `true` loads the demo squad the first time the server starts on an empty database |
+| `DEMO_COACH_NAME` / `DEMO_COACH_EMAIL` / `DEMO_COACH_PASSWORD` | `Adam` / `coach@demo.app` / `password123` | The coach account the demo creates |
 
 Back up `DATA_DIR` regularly. If you expect a lot of video, the next step would be moving uploads to object storage (S3 / Cloudflare R2).
 

@@ -1,0 +1,29 @@
+# One-click hosting on Render (https://render.com): New → Blueprint → pick this repo.
+# Render will ask you for DEMO_COACH_PASSWORD (the password for coach@demo.app).
+services:
+  - type: web
+    name: squad-training
+    runtime: node
+    plan: starter            # paid plan needed for a persistent disk (keeps your data between deploys)
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 5              # database + uploaded videos; can be increased later
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: SEED_DEMO       # loads the demo squad on the very first start only
+        value: "true"
+      - key: DEMO_COACH_NAME
+        value: Adam
+      - key: DEMO_COACH_EMAIL
+        value: coach@demo.app
+      - key: DEMO_COACH_PASSWORD
+        sync: false          # you type this in the Render dashboard; it never goes in the code
+      - key: COACH_SIGNUP_KEY
+        generateValue: true  # random key needed to create any extra coach accounts
+      - key: MAX_UPLOAD_MB
+        value: "300"

@@ -34,6 +34,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '2mb' }));
+  app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api', authenticate(db));
 
   const q = (sql) => db.prepare(sql);
