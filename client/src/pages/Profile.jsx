@@ -6,7 +6,7 @@ import { useAuth } from '../App.jsx';
 import { PageHeader } from '../components/Bits.jsx';
 
 export default function Profile() {
-  const { user, coach, signOut, refresh, signIn } = useAuth();
+  const { user, coach, signOut, refresh, signIn, system } = useAuth();
   const switchView = async () => {
     const out = await api('/me/switch', { method: 'POST' });
     signIn(out.token, out.user);
@@ -55,7 +55,34 @@ export default function Profile() {
         <div className="grow"><strong>Notifications</strong><div className="small muted">Phone alerts, what you’re notified about{user.role === 'athlete' ? ', check-in reminder time' : ''}</div></div>
         <Icon name="right" size={18} />
       </Link>
+      {system && <ServerStatus system={system} />}
       <button className="btn ghost danger" onClick={signOut}>Sign out</button>
     </>
+  );
+}
+
+/** Coach-only: what the server is running on, so hosting problems are visible. */
+function ServerStatus({ system }) {
+  const s = system.storage;
+  const ok = s.persistent !== false;
+  return (
+    <div className="card stack" style={{ borderColor: ok ? 'var(--line)' : 'var(--bad)' }}>
+      <h3 style={{ margin: 0 }}>Server status</h3>
+      <div className="kv small"><span className="muted">Data storage</span><strong style={{ color: ok ? 'var(--good)' : 'var(--bad)' }}>{s.label}</strong></div>
+      <div className="kv small"><span className="muted">Data folder</span><span>{s.dir}</span></div>
+      <div className="kv small"><span className="muted">App version</span><span>{system.version}</span></div>
+      <div className="kv small"><span className="muted">Running since</span><span>{new Date(system.started_at).toLocaleString()}</span></div>
+      <div className="kv small"><span className="muted">Login emails</span><span>{system.email_configured ? 'Set up ✓' : 'Not set up (details shown to copy/share)'}</span></div>
+      {!ok && (
+        <div className="small" style={{ lineHeight: 1.6 }}>
+          <strong>How to fix (in Render, on this app’s service page):</strong>
+          <ol style={{ margin: '6px 0 0', paddingLeft: '1.2rem' }}>
+            <li><strong>Disks → Add disk</strong>: mount path <code>/var/data</code>, size 1–5 GB. (Needs a paid instance, e.g. Starter.)</li>
+            <li><strong>Environment</strong>: add <code>DATA_DIR</code> = <code>/var/data</code>{s.data_dir_set ? ' (it’s set — check it matches the disk’s mount path exactly)' : ''}.</li>
+            <li>Save and redeploy. This card turns green once it’s working.</li>
+          </ol>
+        </div>
+      )}
+    </div>
   );
 }

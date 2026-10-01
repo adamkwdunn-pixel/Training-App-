@@ -3,7 +3,8 @@ import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { UPLOAD_DIR, tx } from './db.js';
+import { DATA_DIR, UPLOAD_DIR, tx } from './db.js';
+import { storageStatus } from './storage.js';
 import { authenticate, hashPassword, verifyPassword, issueToken, newInviteCode, publicUser } from './auth.js';
 import { targetLoad, estimate1RM } from './lib/loads.js';
 import { computeMetrics, applyRule, METRICS, OPS, ACTIONS, PRESET_RULES } from './lib/progression.js';
@@ -37,7 +38,12 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // behind Render's proxy: lets req.protocol report https
   app.use(express.json({ limit: '2mb' }));
-  app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  const storage = storageStatus(process.env.DATA_DIR || DATA_DIR);
+  const startedAt = new Date().toISOString();
+  app.get('/api/health', (_req, res) => res.set('cache-control', 'no-store').json({
+    ok: true, version, started_at: startedAt,
+    storage: storage.persistent === null ? 'local' : storage.persistent ? 'permanent disk' : 'TEMPORARY - data is lost on every update or restart',
+  }));
   // The web app compares this with its own build id and offers a refresh when they differ.
   app.get('/api/version', (_req, res) => res.set('cache-control', 'no-store').json({ version }));
   app.use('/api', authenticate(db));
@@ -124,7 +130,12 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   app.get('/api/me', (req, res) => {
     const u = requireUser(req);
     const coach = u.coach_id ? q('SELECT id, name, email FROM users WHERE id = ?').get(u.coach_id) : null;
-    res.json({ user: publicUser(u), coach });
+    // Coaches get a health summary so problems with hosting show up in the app, not as lost data.
+    const system = u.role === 'coach' ? {
+      version, started_at: startedAt, storage, email_configured: mailer.configured,
+      push_keys: !!q("SELECT 1 FROM app_settings WHERE key = 'vapid'").get() || !!process.env.VAPID_PUBLIC_KEY,
+    } : undefined;
+    res.json({ user: publicUser(u), coach, system });
   });
 
   app.patch('/api/me', (req, res) => {

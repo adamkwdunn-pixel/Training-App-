@@ -75,7 +75,7 @@ export function Brand({ big }) {
 }
 
 export default function Layout({ children }) {
-  const { user, live } = useAuth();
+  const { user, live, system } = useAuth();
   const { pathname } = useLocation();
   // Re-check the unread count whenever the screen changes.
   useEffect(() => {
@@ -133,7 +133,15 @@ export default function Layout({ children }) {
             </nav>
           )}
         </header>
-        <main className="content">{children}</main>
+        <main className="content">
+          {system?.storage?.persistent === false && (
+            <NavLink to="/profile" className="storage-warning">
+              <Icon name="alert" />
+              <span><strong>Data isn’t being saved permanently.</strong> Anything entered now will be lost on the next update. Tap for details.</span>
+            </NavLink>
+          )}
+          {children}
+        </main>
       </div>
 
       <nav className="tabbar">

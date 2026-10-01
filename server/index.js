@@ -1,7 +1,8 @@
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { openDb } from './db.js';
+import { DATA_DIR, openDb } from './db.js';
+import { storageStatus } from './storage.js';
 import { createApp } from './app.js';
 import { seedDemo } from './seed.js';
 import { runReminders } from './notify.js';
@@ -18,6 +19,12 @@ try {
 }
 
 const app = createApp(db, { version });
+
+const storage = storageStatus(process.env.DATA_DIR || DATA_DIR);
+console.log(`Data folder: ${storage.dir} (${storage.label})`);
+if (storage.persistent === false) {
+  console.warn('WARNING: the data folder is not on a persistent disk. Attach a disk and set DATA_DIR to its mount path, or all data will be lost on the next deploy.');
+}
 
 // Serve the built web app and fall back to index.html for client-side routes.
 if (fs.existsSync(dist)) {

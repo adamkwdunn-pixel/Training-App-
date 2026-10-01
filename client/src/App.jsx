@@ -71,6 +71,7 @@ export default function App() {
 
   const auth = {
     live,
+    system: me?.system,
     user: me?.user,
     coach: me?.coach,
     refresh,
