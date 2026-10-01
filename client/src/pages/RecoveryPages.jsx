@@ -6,6 +6,7 @@ import { fmtDate, today, useApi } from '../util.js';
 import { Badge, Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import { ScoreChip } from '../components/Ring.jsx';
+import { fmtSleep } from '../../../shared/sleep.js';
 import { AssignedProtocols, CheckIn, Injuries } from '../components/Recovery.jsx';
 
 export function MyCheckIn() {
@@ -48,11 +49,12 @@ export function RecoverySquad() {
               <div className="grow">
                 <strong>{a.name}</strong>{a.position && <span className="muted small"> · {a.position}</span>}
                 <div className="small muted">
-                  {today ? `Sleep ${today.sleep_hours ?? '—'} h · soreness ${today.soreness}/5${today.notes ? ` · “${today.notes}”` : ''}` : a.latest ? `Last check-in ${fmtDate(a.latest.day)}` : 'No check-ins yet'}
+                  {today ? `Sleep ${fmtSleep(today.sleep_hours)} · soreness ${today.soreness}/5${today.notes ? ` · “${today.notes}”` : ''}` : a.latest ? `Last check-in ${fmtDate(a.latest.day)}` : 'No check-ins yet'}
                   {a.avg_7d != null && ` · 7-day avg ${a.avg_7d}`}
                 </div>
               </div>
               <div className="badges">
+                {a.sleep_debt?.nights_logged > 0 && <Badge tone={{ low: 'ok', moderate: 'warn', high: 'bad' }[a.sleep_debt.level]}>Sleep debt {fmtSleep(a.sleep_debt.debt_hours)}</Badge>}
                 {a.injuries.map((i) => <Badge key={i.id} tone={AVAIL_TONE[i.availability]}>{i.area} · {AVAIL[i.availability]}</Badge>)}
               </div>
             </Link>

@@ -5,6 +5,7 @@ import { fmtDate, today, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import { ScoreChip } from '../components/Ring.jsx';
+import { fmtSleep } from '../../../shared/sleep.js';
 
 export default function CoachHome() {
   const { user } = useAuth();
@@ -54,7 +55,7 @@ export default function CoachHome() {
                 <ScoreChip score={r.score} />
                 <div className="grow">
                   <strong>{r.athlete_name}</strong>
-                  <div className="small muted">Sleep {r.sleep_hours ?? '—'} h · energy {r.energy}/5 · soreness {r.soreness}/5{r.notes ? ` · “${r.notes}”` : ''}</div>
+                  <div className="small muted">Sleep {fmtSleep(r.sleep_hours)} · energy {r.energy}/5 · soreness {r.soreness}/5{r.notes ? ` · “${r.notes}”` : ''}</div>
                 </div>
               </Link>
             ))}

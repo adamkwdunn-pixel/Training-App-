@@ -1,4 +1,5 @@
 import { AVAILABILITY, INJURY_STATUS, READINESS_ITEMS, readinessScore } from '../lib/recovery.js';
+import { fmtSleep, sleepDebt, DEBT_WINDOW_DAYS } from '../../shared/sleep.js';
 
 export const PROTOCOL_CATEGORIES = ['mobility', 'prehab', 'rehab', 'recovery'];
 
@@ -77,7 +78,8 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     const days = Math.min(120, num(req.query.days) || 28);
     const rows = q(`SELECT * FROM readiness WHERE athlete_id = ? AND day > date('now', ?) ORDER BY day`).all(a.id, `-${days} days`);
     const day = str(req.query.today) || today(); // the athlete's local date
-    res.json({ entries: rows, today: rows.find((r) => r.day === day) || null });
+    const recent = q(`SELECT day, sleep_hours FROM readiness WHERE athlete_id = ? AND day > date(?, '-${DEBT_WINDOW_DAYS} days') AND day <= ?`).all(a.id, day, day);
+    res.json({ entries: rows, today: rows.find((r) => r.day === day) || null, sleep_debt: sleepDebt(recent, day) });
   });
 
   app.post('/api/athletes/:id/readiness', (req, res) => {
@@ -85,7 +87,11 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     const b = req.body || {};
     const vals = Object.fromEntries(Object.keys(READINESS_ITEMS).map((k) => [k, int15(b[k])]));
     if (Object.values(vals).some((v) => v == null)) fail(400, 'Answer every question (1-5)');
-    const sleepHours = num(b.sleep_hours);
+    // Accept decimal hours, or hours + minutes from the pickers.
+    const sleepHours = b.sleep_h !== undefined || b.sleep_m !== undefined
+      ? (num(b.sleep_h) ?? 0) + (num(b.sleep_m) ?? 0) / 60
+      : num(b.sleep_hours);
+    if (sleepHours != null && (sleepHours < 0 || sleepHours > 16)) fail(400, 'Hours slept must be between 0 and 16');
     const score = readinessScore({ ...vals, sleep_hours: sleepHours });
     const day = str(b.day) || today();
     const isNew = !q('SELECT 1 FROM readiness WHERE athlete_id = ? AND day = ?').get(a.id, day);
@@ -100,7 +106,7 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     if (isNew) {
       notify(a.coach_id, {
         type: 'checkin', title: `${score < 50 ? '⚠️ ' : ''}${a.name} checked in: ${score}/100`, link: `/athletes/${a.id}?tab=recovery`, actorId: req.user.id,
-        body: [sleepHours != null && `${sleepHours} h sleep`, `soreness ${vals.soreness}/5`, `energy ${vals.energy}/5`, str(b.notes) && `“${str(b.notes)}”`].filter(Boolean).join(' · '),
+        body: [sleepHours != null && `${fmtSleep(sleepHours)} sleep`, `soreness ${vals.soreness}/5`, `energy ${vals.energy}/5`, str(b.notes) && `“${str(b.notes)}”`].filter(Boolean).join(' · '),
       });
     }
     res.status(201).json({ score });
@@ -269,12 +275,16 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     const latest = q('SELECT * FROM readiness WHERE athlete_id = ? ORDER BY day DESC LIMIT 1');
     const avg = q("SELECT AVG(score) AS s, COUNT(*) AS n FROM readiness WHERE athlete_id = ? AND day > date('now', '-7 days')");
     const inj = q("SELECT * FROM injuries WHERE athlete_id = ? AND status != 'resolved' ORDER BY reported_on DESC");
+    const nights = q(`SELECT day, sleep_hours FROM readiness WHERE athlete_id = ? AND day > date(?, '-${DEBT_WINDOW_DAYS} days') AND day <= ?`);
     const day = str(req.query.today) || today();
     res.json({
       today: day,
       athletes: athletes.map((a) => {
         const w = avg.get(a.id);
-        return { ...a, latest: latest.get(a.id) || null, avg_7d: w.s != null ? Math.round(w.s) : null, checkins_7d: w.n, injuries: inj.all(a.id) };
+        return {
+          ...a, latest: latest.get(a.id) || null, avg_7d: w.s != null ? Math.round(w.s) : null, checkins_7d: w.n, injuries: inj.all(a.id),
+          sleep_debt: sleepDebt(nights.all(a.id, day, day), day),
+        };
       }),
     });
   });

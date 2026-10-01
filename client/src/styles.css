@@ -545,3 +545,27 @@ tr.clickable:hover td { background: var(--hover); }
   border: 1px solid var(--bad); color: var(--text); text-decoration: none !important; font-size: 0.88rem; line-height: 1.45;
 }
 .storage-warning .icon { color: var(--bad); flex: none; margin-top: 1px; }
+
+/* ---------- sleep ---------- */
+.sleep-pick { display: grid; grid-template-columns: 1fr auto 1fr auto; gap: 10px; align-items: center; }
+.sleep-pick span { color: var(--muted); font-size: 0.9rem; }
+.sleep-debt .num-big { font-size: 1.9rem; }
+.debt-track { position: relative; height: 10px; border-radius: 99px; background: var(--line-soft); overflow: hidden; margin-top: 14px; }
+.debt-fill { height: 100%; border-radius: 99px; background: var(--good); transition: width 0.4s; }
+.sleep-debt.moderate .debt-fill { background: var(--warn); }
+.sleep-debt.high .debt-fill { background: var(--bad); }
+.debt-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.35); }
+.debt-scale { position: relative; height: 16px; margin-top: 6px; }
+.debt-scale span { position: absolute; top: 0; }
+.debt-scale span:nth-child(1) { left: 0; }
+.debt-scale span:nth-child(2) { left: 20%; transform: translateX(-50%); }
+.debt-scale span:nth-child(3) { left: 50%; transform: translateX(-50%); }
+.debt-scale span:nth-child(4) { right: 0; }
+.badge.debt-low { border-color: var(--good); color: var(--good); }
+.badge.debt-moderate { border-color: var(--warn); color: var(--warn); }
+.badge.debt-high { border-color: var(--bad); color: var(--bad); }
+
+@media (max-width: 600px) {
+  /* Badges drop under the text on phones instead of squeezing it. */
+  .row.wrap > .badges { flex-basis: 100%; max-width: 100%; justify-content: flex-start; padding-left: 62px; margin-top: -6px; }
+}

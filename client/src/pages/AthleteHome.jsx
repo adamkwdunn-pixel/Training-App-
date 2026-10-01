@@ -4,6 +4,7 @@ import { describeRx, fmtDate, today, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import { ScoreChip } from '../components/Ring.jsx';
+import { fmtSleep } from '../../../shared/sleep.js';
 
 export default function AthleteHome() {
   const { user, coach } = useAuth();
@@ -24,7 +25,9 @@ export default function AthleteHome() {
           {ready?.today ? <ScoreChip score={ready.today.score} /> : <Icon name="heart" />}
           <div className="grow">
             <strong>{ready?.today ? 'Readiness logged' : 'Daily check-in'}</strong>
-            <div className="small muted">{ready?.today ? 'Tap to update' : 'Sleep, soreness, energy — 30 seconds'}</div>
+            <div className="small muted">
+              {ready?.sleep_debt?.nights_logged ? `Sleep debt ${fmtSleep(ready.sleep_debt.debt_hours)} (14 days)` : ready?.today ? 'Tap to update' : 'Sleep, soreness, energy — 30 seconds'}
+            </div>
           </div>
           {!ready?.today && <span className="dot-new" />}
         </Link>

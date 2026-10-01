@@ -73,6 +73,13 @@ test('nutrition, recovery and testing sections', async () => {
   assert.equal(r.data.score, 35);
   assert.equal((await call('GET', '/inbox', C)).data.low_readiness.length, 1);
   assert.equal((await call('POST', `/athletes/${id}/readiness`, A, { sleep_quality: 2 })).status, 400);
+  // Hours + minutes, and the 14-day sleep debt meter.
+  const yday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  await call('POST', `/athletes/${id}/readiness`, A, { day: yday, sleep_h: 6, sleep_m: 45, sleep_quality: 3, energy: 3, soreness: 3, stress: 3, mood: 3 });
+  const rd = (await call('GET', `/athletes/${id}/readiness?today=${yday}`, A)).data;
+  assert.equal(rd.today.sleep_hours, 6.75);
+  assert.equal(rd.sleep_debt.debt_hours, 0.75);
+  assert.equal((await call('POST', `/athletes/${id}/readiness`, A, { sleep_h: 20, sleep_quality: 3, energy: 3, soreness: 3, stress: 3, mood: 3 })).status, 400);
 
   const inj = await call('POST', `/athletes/${id}/injuries`, A, { area: 'Hamstring', side: 'left', pain: 4, availability: 'modified', description: 'Tight after sprints' });
   assert.equal(inj.status, 201);
