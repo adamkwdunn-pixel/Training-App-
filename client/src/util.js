@@ -26,7 +26,11 @@ export const fmtDate = (d) => {
   return date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 };
 export const fmtKg = (n) => (n == null ? '—' : `${Math.round(n * 10) / 10} kg`);
-export const today = () => new Date().toISOString().slice(0, 10);
+/** Today's date on this device (not UTC), as YYYY-MM-DD. */
+export const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export const CATEGORIES = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'other'];
 export const METRIC_LABELS = { load: 'Weight × reps', time: 'Time (s)', distance: 'Distance (m)', height: 'Height (cm)', reps: 'Reps', velocity: 'Velocity (m/s)' };

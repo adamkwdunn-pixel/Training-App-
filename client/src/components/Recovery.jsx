@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
-import { fmtDate, useApi } from '../util.js';
+import { fmtDate, today, useApi } from '../util.js';
 import { Badge, Empty, Loading } from './Bits.jsx';
 import Icon from './Icon.jsx';
 import LineChart from './LineChart.jsx';
@@ -11,7 +11,7 @@ import Thread from './Thread.jsx';
 /** Daily readiness questionnaire (one per day, can be edited the same day). */
 export function CheckIn({ athleteId }) {
   const { data: meta } = useApi('/recovery/meta');
-  const { data, reload } = useApi(`/athletes/${athleteId}/readiness`);
+  const { data, reload } = useApi(`/athletes/${athleteId}/readiness?today=${today()}`);
   const [f, setF] = useState(null);
   const [msg, setMsg] = useState('');
   if (!meta || !data) return <Loading />;
@@ -22,7 +22,7 @@ export function CheckIn({ athleteId }) {
     e.preventDefault();
     setMsg('');
     try {
-      await api(`/athletes/${athleteId}/readiness`, { method: 'POST', body: form });
+      await api(`/athletes/${athleteId}/readiness`, { method: 'POST', body: { ...form, day: today() } });
       setF(null);
       reload();
     } catch (e2) {
@@ -97,7 +97,7 @@ export function ReadinessHistory({ entries }) {
 }
 
 export function ReadinessFor({ athleteId }) {
-  const { data } = useApi(`/athletes/${athleteId}/readiness?days=28`);
+  const { data } = useApi(`/athletes/${athleteId}/readiness?days=28&today=${today()}`);
   if (!data) return <Loading />;
   if (!data.entries.length) return <p className="muted small">No check-ins yet.</p>;
   return <ReadinessHistory entries={data.entries} />;
@@ -249,12 +249,12 @@ function InjuryCard({ i, meta, isCoach, open, onToggle, onChange }) {
 export function AssignedProtocols({ athleteId }) {
   const { user } = useAuth();
   const isCoach = user.role === 'coach';
-  const { data, error, reload } = useApi(`/athletes/${athleteId}/protocols`);
+  const { data, error, reload } = useApi(`/athletes/${athleteId}/protocols?today=${today()}`);
   const [open, setOpen] = useState(null);
   if (!data) return <Loading error={error} />;
   if (!data.protocols.length) return <Empty>{isCoach ? 'No protocols assigned. Assign one from Coach → Protocols.' : 'No stretching or rehab protocols assigned yet.'}</Empty>;
   const toggle = async (p) => {
-    await api(`/protocol-assignments/${p.id}/complete`, { method: 'POST', body: { done: !p.done_today } });
+    await api(`/protocol-assignments/${p.id}/complete`, { method: 'POST', body: { done: !p.done_today, day: today() } });
     reload();
   };
   const remove = async (p) => {

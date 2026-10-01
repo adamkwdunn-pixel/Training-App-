@@ -26,7 +26,7 @@ export function ensureMainLifts(db, coachId) {
 
 const e1rmOf = (weight, reps) => (Number(reps) === 1 ? Number(weight) : Math.round(estimate1RM(Number(weight), Number(reps), 0) * 10) / 10);
 
-export function registerTesting(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, ownedBy, getState, saveState }) {
+export function registerTesting(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, ownedBy, getState, saveState, notify, first }) {
   const withVideo = `SELECT t.*, v.status AS video_status, u.name AS created_by_name FROM test_results t
     LEFT JOIN videos v ON v.id = t.video_id LEFT JOIN users u ON u.id = t.created_by`;
 
@@ -69,6 +69,9 @@ export function registerTesting(app, { db, q, fail, num, str, today, requireUser
         a.id, ex.id, 'Testing', 'test', `Tested ${weight} kg × ${reps} → max ${cur.max ?? '—'} → ${e1rm} kg${cur.load_offset ? ', load adjustment reset' : ''}`,
       );
     }
+    const what = `${ex.name} ${weight} kg × ${reps}${reps > 1 ? ` (≈ ${e1rm} kg 1RM)` : ''}`;
+    if (u.role === 'coach') notify(a.id, { type: 'test', title: `${first(u.name)} recorded a test for you`, body: what, link: '/testing', actorId: u.id });
+    else notify(a.coach_id, { type: 'test', title: `${a.name} logged a test`, body: what, link: `/athletes/${a.id}?tab=testing`, actorId: u.id });
     res.status(201).json({ id: Number(info.lastInsertRowid), e1rm });
   });
 
@@ -78,9 +81,13 @@ export function registerTesting(app, { db, q, fail, num, str, today, requireUser
     return t;
   };
   app.patch('/api/tests/:id', (req, res) => {
-    requireCoach(req);
+    const coach = requireCoach(req);
     const t = testFor(req, req.params.id);
     q('UPDATE test_results SET verified = ? WHERE id = ?').run(req.body?.verified ? 1 : 0, t.id);
+    if (req.body?.verified && !t.verified) {
+      const ex = q('SELECT name FROM exercises WHERE id = ?').get(t.exercise_id);
+      notify(t.athlete_id, { type: 'test', title: `${first(coach.name)} verified your ${ex.name} ✓`, body: `${t.weight} kg × ${t.reps}`, link: '/testing', actorId: coach.id });
+    }
     res.json({ ok: true });
   });
   app.delete('/api/tests/:id', (req, res) => {

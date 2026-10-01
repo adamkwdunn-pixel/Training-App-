@@ -171,6 +171,8 @@ export async function seedDemo(db, { coachName, coachEmail, coachPassword } = DE
         await call('POST', `/athletes/${a.user.id}/tests`, a.token, { exercise_id: id, weight, reps, tested_on: daysAgo(12), update_max: false });
       }
     }
+    // Demo history shouldn't arrive as a flood of notifications.
+    db.exec('DELETE FROM notifications');
   } finally {
     server.close();
   }

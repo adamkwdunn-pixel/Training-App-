@@ -284,6 +284,42 @@ CREATE TABLE IF NOT EXISTS test_results (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ---------- notifications ----------
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  link TEXT,
+  read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notification_prefs (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  muted TEXT NOT NULL DEFAULT '[]',         -- JSON list of notification types turned off
+  reminder_time TEXT NOT NULL DEFAULT '08:00',
+  timezone TEXT,
+  last_reminder_on TEXT
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications ON notifications(user_id, read, id);
 CREATE INDEX IF NOT EXISTS idx_bodycomp ON body_measurements(athlete_id, measured_on);
 CREATE INDEX IF NOT EXISTS idx_readiness ON readiness(athlete_id, day);
 CREATE INDEX IF NOT EXISTS idx_tests ON test_results(athlete_id, exercise_id, tested_on);

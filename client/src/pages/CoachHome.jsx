@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
-import { fmtDate, useApi } from '../util.js';
+import { fmtDate, today, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import { ScoreChip } from '../components/Ring.jsx';
 
 export default function CoachHome() {
   const { user } = useAuth();
-  const { data, error, reload } = useApi('/inbox');
+  const { data, error, reload } = useApi(`/inbox?today=${today()}`);
   if (!data) return <Loading error={error} />;
   const nothing = !data.logs.length && !data.videos.length && !data.flags.length && !data.messages.length && !data.injuries.length && !data.low_readiness.length;
 

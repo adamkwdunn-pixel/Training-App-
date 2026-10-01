@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { api, getToken, setToken } from './api.js';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
@@ -24,12 +24,32 @@ import Profile from './pages/Profile.jsx';
 import { MyBodyFat, MyTargets, MyWeight, NutritionSquad } from './pages/NutritionPages.jsx';
 import { MyCheckIn, MyInjuries, MyProtocols, ProtocolLibrary, RecoverySquad } from './pages/RecoveryPages.jsx';
 import { MyTesting, TestingSquad } from './pages/TestingPages.jsx';
+import Notifications from './pages/Notifications.jsx';
+import NotificationSettings from './pages/NotificationSettings.jsx';
+import { applyUpdate, useLive } from './live.js';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 export default function App() {
   const [me, setMe] = useState(undefined); // undefined = loading, null = signed out
+  const live = useLive(!!me);
+  const navigate = useNavigate();
+
+  // Tapping a push notification while the app is open: go straight to the right screen.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return undefined;
+    const onMsg = (e) => e.data?.type === 'navigate' && navigate(e.data.url);
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, [navigate]);
+
+  // Keep the server's copy of this user's timezone current, so reminders arrive at their local time.
+  useEffect(() => {
+    if (!me?.user) return;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) api('/notifications/prefs', { method: 'PUT', body: { timezone: tz } }).catch(() => {});
+  }, [me?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = async () => {
     if (!getToken()) return setMe(null);
@@ -48,6 +68,7 @@ export default function App() {
   }, []);
 
   const auth = {
+    live,
     user: me?.user,
     coach: me?.coach,
     refresh,
@@ -63,12 +84,14 @@ export default function App() {
     },
   };
 
+  const banner = live.updateReady && <UpdateBanner />;
   if (me === undefined) return <div className="splash">Loading…</div>;
-  if (!me) return <AuthContext.Provider value={auth}><Login /></AuthContext.Provider>;
+  if (!me) return <AuthContext.Provider value={auth}>{banner}<Login /></AuthContext.Provider>;
 
   const isCoach = me.user.role === 'coach';
   return (
     <AuthContext.Provider value={auth}>
+      {banner}
       <Layout>
         <Routes>
           {isCoach ? (
@@ -109,9 +132,20 @@ export default function App() {
           <Route path="/videos/:id" element={<VideoView />} />
           <Route path="/logs/:id" element={<LogView />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/settings/notifications" element={<NotificationSettings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
     </AuthContext.Provider>
+  );
+}
+
+function UpdateBanner() {
+  return (
+    <button className="update-banner" onClick={applyUpdate}>
+      <span><strong>New version available</strong></span>
+      <span className="update-btn">Update</span>
+    </button>
   );
 }

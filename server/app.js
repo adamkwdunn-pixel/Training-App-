@@ -10,6 +10,7 @@ import { computeMetrics, applyRule, METRICS, OPS, ACTIONS, PRESET_RULES } from '
 import { registerTesting, ensureMainLifts } from './routes/testing.js';
 import { registerNutrition } from './routes/nutrition.js';
 import { registerRecovery, seedProtocols } from './routes/recovery.js';
+import { createNotifier, registerNotifications, webPushSender } from './notify.js';
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -30,14 +31,21 @@ const CATEGORIES = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'o
 const EXERCISE_METRICS = ['load', 'time', 'distance', 'height', 'reps', 'velocity'];
 const COMMENT_TYPES = ['general', 'workout', 'video', 'injury'];
 
-export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300) } = {}) {
+export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev' } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '2mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  // The web app compares this with its own build id and offers a refresh when they differ.
+  app.get('/api/version', (_req, res) => res.set('cache-control', 'no-store').json({ version }));
   app.use('/api', authenticate(db));
 
   const q = (sql) => db.prepare(sql);
+  // push: a custom sender (tests), null to disable, or undefined for real Web Push.
+  const notify = createNotifier(db, push === undefined ? webPushSender(db) : push);
+  app.locals.notify = notify;
+  const first = (name) => String(name).split(' ')[0];
+  const clip = (t, n = 140) => (t && t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
   // ---------- access helpers ----------
   const requireUser = (req) => req.user || fail(401, 'Please sign in');
@@ -95,6 +103,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     ).run(String(name).trim(), String(email).trim(), hashPassword(String(password)), finalRole, coachId, finalRole === 'coach' ? newInviteCode() : null);
     const user = q('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
     if (finalRole === 'coach') seedCoachDefaults(db, user.id);
+    else notify(coachId, { type: 'join', title: `${user.name} joined your squad`, body: 'Assign them a program to get started.', link: `/athletes/${user.id}?tab=program` });
     res.status(201).json({ token: issueToken(db, user.id), user: publicUser(user) });
   });
 
@@ -511,6 +520,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
         const a = athleteFor(req, aid);
         if (b.replace_active) q('UPDATE assignments SET active = 0 WHERE athlete_id = ?').run(a.id);
         q('INSERT INTO assignments (program_id, athlete_id, start_date, rule_id) VALUES (?, ?, ?, ?)').run(p.id, a.id, str(b.start_date) || today(), ruleId);
+        notify(a.id, { type: 'program', title: `New program: ${p.name}`, body: `${first(coach.name)} has assigned you a new program.`, link: '/program', actorId: coach.id });
       }
     });
     res.status(201).json({ program: loadProgram(p.id) });
@@ -655,6 +665,22 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       }
       return { id: logId, events };
     });
+
+    const log = q('SELECT title, session_rpe FROM workout_logs WHERE id = ?').get(result.id);
+    const link = `/logs/${result.id}`;
+    const changes = result.events.map((e) => `${e.exercise}: ${e.summary}`);
+    notify(athlete.coach_id, {
+      type: 'session', title: `${athlete.name} completed ${log.title}`, actorId: u.id, link,
+      body: [`${sets.length} sets`, log.session_rpe != null && `session RPE ${log.session_rpe}`, clip(b.notes, 80) && `“${clip(b.notes, 80)}”`].filter(Boolean).join(' · '),
+    });
+    for (const e of result.events.filter((x) => x.summary.includes('⚑'))) {
+      notify(athlete.coach_id, { type: 'flag', title: `⚑ ${athlete.name} — ${e.exercise}`, body: e.summary, link, actorId: u.id });
+    }
+    // The athlete always gets their own summary, even though they did the logging.
+    notify(athlete.id, {
+      type: 'session', title: 'Session complete 💪', link,
+      body: changes.length ? clip(`Program updated — ${changes.join(' · ')}`, 180) : `${log.title} logged. Nice work.`,
+    });
     res.status(201).json(result);
   });
 
@@ -757,6 +783,12 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       const videoId = Number(info.lastInsertRowid);
       const testId = num(req.body.test_id);
       if (testId) q('UPDATE test_results SET video_id = ? WHERE id = ? AND athlete_id = ?').run(videoId, testId, athlete.id);
+      const exName = exerciseId ? q('SELECT name FROM exercises WHERE id = ?').get(exerciseId).name : 'General';
+      notify(athlete.coach_id, {
+        type: 'form_check', actorId: u.id, link: `/videos/${videoId}`,
+        title: `${athlete.name} sent ${testId ? 'a max-lift video' : 'a form check'}`,
+        body: [exName, clip(str(req.body.note), 100) && `“${clip(str(req.body.note), 100)}”`].filter(Boolean).join(' · '),
+      });
       res.status(201).json({ id: videoId });
     } catch (e) {
       fs.rm(req.file.path, () => {});
@@ -843,6 +875,17 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     if (type === 'injury' && !q('SELECT 1 FROM injuries WHERE id = ? AND athlete_id = ?').get(targetId, a.id)) fail(400, 'Unknown injury');
     const info = q('INSERT INTO comments (athlete_id, author_id, target_type, target_id, body) VALUES (?, ?, ?, ?, ?)').run(a.id, u.id, type, targetId, String(b.body).trim());
     if (type === 'video' && u.role === 'coach') q("UPDATE videos SET status = 'reviewed' WHERE id = ?").run(targetId);
+
+    const text = clip(String(b.body).trim());
+    if (u.role === 'coach') {
+      const what = { video: 'your form check', workout: 'your session', injury: 'your injury report' }[type];
+      const link = { video: `/videos/${targetId}`, workout: `/logs/${targetId}`, injury: '/recovery/injuries', general: '/messages' }[type];
+      notify(a.id, { type: 'comment', title: what ? `${first(u.name)} commented on ${what}` : `Message from ${first(u.name)}`, body: text, link, actorId: u.id });
+    } else {
+      const what = { video: 'their form check', workout: 'their session', injury: 'their injury' }[type];
+      const link = { video: `/videos/${targetId}`, workout: `/logs/${targetId}`, injury: `/athletes/${a.id}?tab=recovery`, general: `/athletes/${a.id}?tab=messages` }[type];
+      notify(a.coach_id, { type: 'message', title: what ? `${a.name} replied on ${what}` : `Message from ${a.name}`, body: text, link, actorId: u.id });
+    }
     res.status(201).json({ id: Number(info.lastInsertRowid) });
   });
 
@@ -862,7 +905,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
         injuries: q(`SELECT i.*, u.name AS athlete_name FROM injuries i JOIN users u ON u.id = i.athlete_id
           WHERE u.coach_id = ? AND i.status = 'new' ORDER BY i.id DESC`).all(u.id),
         low_readiness: q(`SELECT r.*, u.name AS athlete_name FROM readiness r JOIN users u ON u.id = r.athlete_id
-          WHERE u.coach_id = ? AND r.day = ? AND r.score < 60 ORDER BY r.score`).all(u.id, today()),
+          WHERE u.coach_id = ? AND r.day = ? AND r.score < 60 ORDER BY r.score`).all(u.id, str(req.query.today) || today()),
       });
     } else {
       res.json({
@@ -875,7 +918,8 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   });
 
   // ---------- nutrition, recovery, testing ----------
-  const ctx = { db, q, fail, num, str, today, tx, requireUser, requireCoach, athleteFor, ownedBy, getState, saveState };
+  const ctx = { db, q, fail, num, str, today, tx, requireUser, requireCoach, athleteFor, ownedBy, getState, saveState, notify, first, clip };
+  registerNotifications(app, ctx);
   registerNutrition(app, ctx);
   registerRecovery(app, ctx);
   registerTesting(app, ctx);

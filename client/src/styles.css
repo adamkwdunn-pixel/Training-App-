@@ -487,3 +487,33 @@ tr.clickable:hover td { background: var(--hover); }
 .result-box { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px 16px; }
 .segmented.scroll-x { margin-left: 0; margin-right: 0; padding: 4px; overflow-x: auto; }
 .segmented.scroll-x button { flex: 1 0 auto; }
+
+/* ---------- notifications ---------- */
+.bell { position: relative; display: inline-grid; place-items: center; }
+.bell-count {
+  position: absolute; top: -7px; right: -9px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: #fff; color: #000; font-size: 0.66rem; font-weight: 800; display: grid; place-items: center; line-height: 1;
+  border: 2px solid #000;
+}
+.side-link.active .bell-count { background: #000; color: #fff; border-color: #fff; }
+.notif { align-items: flex-start; }
+.notif-icon { width: 36px; height: 36px; flex: none; border-radius: 50%; border: 1px solid var(--line-input); display: grid; place-items: center; color: var(--muted); }
+.notif.unread .notif-icon { border-color: #fff; color: #fff; }
+.notif-title { font-weight: 500; }
+.notif.unread .notif-title { font-weight: 700; }
+.notif .dot-new { margin-top: 8px; }
+.switch-row { cursor: pointer; flex-direction: row; }
+.switch {
+  appearance: none; -webkit-appearance: none; width: 50px !important; height: 30px !important; min-height: 30px; border-radius: 999px;
+  border: 1px solid var(--line-input); background: transparent; position: relative; cursor: pointer; padding: 0; flex: none; transition: background 0.2s;
+}
+.switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--muted); transition: transform 0.2s, background 0.2s; }
+.switch:checked { background: #fff; border-color: #fff; }
+.switch:checked::after { transform: translateX(20px); background: #000; }
+.update-banner {
+  position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top) + 10px); z-index: 100;
+  display: flex; align-items: center; gap: 14px; width: min(560px, calc(100% - 24px)); justify-content: space-between;
+  background: #fff; color: #000; border: none; border-radius: 999px; padding: 8px 8px 8px 18px; font: inherit; font-size: 0.9rem;
+  cursor: pointer; box-shadow: 0 10px 40px rgb(0 0 0 / 0.6); text-align: left;
+}
+.update-btn { background: #000; color: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 0.85rem; flex: none; }

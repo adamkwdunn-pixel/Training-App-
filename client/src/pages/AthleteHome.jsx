@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
-import { describeRx, fmtDate, useApi } from '../util.js';
+import { describeRx, fmtDate, today, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import { ScoreChip } from '../components/Ring.jsx';
@@ -9,7 +9,7 @@ export default function AthleteHome() {
   const { user, coach } = useAuth();
   const { data: plan, error } = useApi(`/athletes/${user.id}/plan`);
   const { data: inbox } = useApi('/inbox');
-  const { data: ready } = useApi(`/athletes/${user.id}/readiness?days=1`);
+  const { data: ready } = useApi(`/athletes/${user.id}/readiness?days=2&today=${today()}`);
   const { data: food } = useApi(`/athletes/${user.id}/nutrition`);
 
   if (!plan) return <Loading error={error} />;

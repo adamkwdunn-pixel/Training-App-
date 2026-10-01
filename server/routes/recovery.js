@@ -63,7 +63,7 @@ export function seedProtocols(db, coachId) {
   for (const p of PRESET_PROTOCOLS) ins.run(coachId, p.name, p.category, p.description, JSON.stringify(p.items));
 }
 
-export function registerRecovery(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, ownedBy, tx }) {
+export function registerRecovery(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, ownedBy, tx, notify, first }) {
   const int15 = (v) => {
     const n = num(v);
     return n != null && n >= 1 && n <= 5 ? Math.round(n) : null;
@@ -76,7 +76,8 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     const a = athleteFor(req, req.params.id);
     const days = Math.min(120, num(req.query.days) || 28);
     const rows = q(`SELECT * FROM readiness WHERE athlete_id = ? AND day > date('now', ?) ORDER BY day`).all(a.id, `-${days} days`);
-    res.json({ entries: rows, today: rows.find((r) => r.day === today()) || null });
+    const day = str(req.query.today) || today(); // the athlete's local date
+    res.json({ entries: rows, today: rows.find((r) => r.day === day) || null });
   });
 
   app.post('/api/athletes/:id/readiness', (req, res) => {
@@ -86,13 +87,22 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     if (Object.values(vals).some((v) => v == null)) fail(400, 'Answer every question (1-5)');
     const sleepHours = num(b.sleep_hours);
     const score = readinessScore({ ...vals, sleep_hours: sleepHours });
+    const day = str(b.day) || today();
+    const isNew = !q('SELECT 1 FROM readiness WHERE athlete_id = ? AND day = ?').get(a.id, day);
     q(`INSERT INTO readiness (athlete_id, day, sleep_hours, sleep_quality, energy, soreness, stress, mood, score, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (athlete_id, day) DO UPDATE SET sleep_hours = excluded.sleep_hours, sleep_quality = excluded.sleep_quality,
          energy = excluded.energy, soreness = excluded.soreness, stress = excluded.stress, mood = excluded.mood,
          score = excluded.score, notes = excluded.notes`).run(
-      a.id, str(b.day) || today(), sleepHours, vals.sleep_quality, vals.energy, vals.soreness, vals.stress, vals.mood, score, str(b.notes),
+      a.id, day, sleepHours, vals.sleep_quality, vals.energy, vals.soreness, vals.stress, vals.mood, score, str(b.notes),
     );
+    // Only the first check-in of the day notifies; later edits don't.
+    if (isNew) {
+      notify(a.coach_id, {
+        type: 'checkin', title: `${score < 50 ? '⚠️ ' : ''}${a.name} checked in: ${score}/100`, link: `/athletes/${a.id}?tab=recovery`, actorId: req.user.id,
+        body: [sleepHours != null && `${sleepHours} h sleep`, `soreness ${vals.soreness}/5`, `energy ${vals.energy}/5`, str(b.notes) && `“${str(b.notes)}”`].filter(Boolean).join(' · '),
+      });
+    }
     res.status(201).json({ score });
   });
 
@@ -119,6 +129,10 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     if (!f.area) fail(400, 'Which body area is injured?');
     const info = q(`INSERT INTO injuries (athlete_id, area, side, description, pain, availability, reported_on)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).run(a.id, f.area, f.side, f.description, f.pain, f.availability, str(req.body?.reported_on) || today());
+    notify(a.coach_id, {
+      type: 'injury', title: `🚑 ${a.name} reported an injury`, link: `/athletes/${a.id}?tab=recovery`, actorId: req.user.id,
+      body: `${f.area}${f.side && f.side !== 'n/a' ? ` (${f.side})` : ''} · pain ${f.pain ?? '—'}/10 · ${AVAILABILITY[f.availability].toLowerCase()}`,
+    });
     res.status(201).json({ id: Number(info.lastInsertRowid) });
   });
 
@@ -143,7 +157,16 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
       f.area, f.side, f.description, f.pain, status === 'resolved' ? 'full' : f.availability, status,
       status === 'resolved' ? i.resolved_on || today() : null, i.id,
     );
-    res.json({ injury: q('SELECT * FROM injuries WHERE id = ?').get(i.id) });
+    const next = q('SELECT * FROM injuries WHERE id = ?').get(i.id);
+    // Notify on meaningful changes only (status / availability), not every pain-slider nudge.
+    if (next.status !== i.status || next.availability !== i.availability) {
+      const athlete = q('SELECT * FROM users WHERE id = ?').get(i.athlete_id);
+      const label = { new: 'New', monitoring: 'Monitoring', rehab: 'Rehab', resolved: 'Resolved' }[next.status];
+      const what = `${next.area}: ${label} · ${AVAILABILITY[next.availability].toLowerCase()}`;
+      if (u.role === 'coach') notify(athlete.id, { type: 'comment', title: `${first(u.name)} updated your injury`, body: what, link: '/recovery/injuries', actorId: u.id });
+      else notify(athlete.coach_id, { type: 'injury', title: next.status === 'resolved' ? `${athlete.name} is back to full training` : `${athlete.name} updated an injury`, body: what, link: `/athletes/${athlete.id}?tab=recovery`, actorId: u.id });
+    }
+    res.json({ injury: next });
   });
   app.delete('/api/injuries/:id', (req, res) => {
     requireCoach(req);
@@ -202,6 +225,7 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
         const a = athleteFor(req, aid);
         q('UPDATE protocol_assignments SET active = 0 WHERE protocol_id = ? AND athlete_id = ?').run(p.id, a.id);
         q('INSERT INTO protocol_assignments (protocol_id, athlete_id, frequency, note) VALUES (?, ?, ?, ?)').run(p.id, a.id, str(req.body.frequency), str(req.body.note));
+        notify(a.id, { type: 'program', title: `New protocol: ${p.name}`, body: [str(req.body.frequency), str(req.body.note)].filter(Boolean).join(' · ') || null, link: '/recovery/protocols', actorId: coach.id });
       }
     });
     res.status(201).json({ ok: true });
@@ -234,7 +258,7 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
         (SELECT COUNT(*) FROM protocol_completions c WHERE c.assignment_id = pa.id AND c.day = ?) AS done_today,
         (SELECT COUNT(*) FROM protocol_completions c WHERE c.assignment_id = pa.id AND c.day > date('now', '-7 days')) AS done_7d
       FROM protocol_assignments pa JOIN protocols p ON p.id = pa.protocol_id
-      WHERE pa.athlete_id = ? AND pa.active = 1 ORDER BY p.category, p.name`).all(today(), a.id);
+      WHERE pa.athlete_id = ? AND pa.active = 1 ORDER BY p.category, p.name`).all(str(req.query.today) || today(), a.id);
     res.json({ protocols: rows.map(parse) });
   });
 
@@ -245,8 +269,9 @@ export function registerRecovery(app, { db, q, fail, num, str, today, requireUse
     const latest = q('SELECT * FROM readiness WHERE athlete_id = ? ORDER BY day DESC LIMIT 1');
     const avg = q("SELECT AVG(score) AS s, COUNT(*) AS n FROM readiness WHERE athlete_id = ? AND day > date('now', '-7 days')");
     const inj = q("SELECT * FROM injuries WHERE athlete_id = ? AND status != 'resolved' ORDER BY reported_on DESC");
+    const day = str(req.query.today) || today();
     res.json({
-      today: today(),
+      today: day,
       athletes: athletes.map((a) => {
         const w = avg.get(a.id);
         return { ...a, latest: latest.get(a.id) || null, avg_7d: w.s != null ? Math.round(w.s) : null, checkins_7d: w.n, injuries: inj.all(a.id) };

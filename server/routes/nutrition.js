@@ -3,7 +3,7 @@ import {
 } from '../../shared/nutrition.js';
 import { METHODS, composition, jacksonPollock, navyBodyFat, sitesFor } from '../../shared/bodyfat.js';
 
-export function registerNutrition(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, tx }) {
+export function registerNutrition(app, { db, q, fail, num, str, today, requireUser, requireCoach, athleteFor, tx, notify, first }) {
   const latestBodyFat = (athleteId) => q('SELECT * FROM body_measurements WHERE athlete_id = ? ORDER BY measured_on DESC, id DESC LIMIT 1').get(athleteId);
 
   const profileOf = (a) => {
@@ -91,6 +91,7 @@ export function registerNutrition(app, { db, q, fail, num, str, today, requireUs
     const w = num(req.body?.weight);
     if (!w || w < 30 || w > 250) fail(400, 'Enter a bodyweight in kg');
     logWeight(a.id, str(req.body?.measured_on) || today(), w);
+    notify(a.coach_id, { type: 'data', title: `${a.name} logged bodyweight`, body: `${w} kg`, link: `/athletes/${a.id}?tab=nutrition`, actorId: req.user.id });
     res.status(201).json({ ok: true });
   });
 
@@ -148,6 +149,9 @@ export function registerNutrition(app, { db, q, fail, num, str, today, requireUs
     if (num(b.weight)) logWeight(a.id, measuredOn, num(b.weight));
     const info = q(`INSERT INTO body_measurements (athlete_id, measured_on, method, inputs, bodyweight, body_fat_pct, sum_mm, notes, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(a.id, measuredOn, method, JSON.stringify(inputs), weight ?? null, pct, sum, str(b.notes), u.id);
+    const what = `${pct}% body fat${sum != null ? ` · Σ ${sum} mm` : ''} (${METHODS[method]})`;
+    if (u.role === 'coach') notify(a.id, { type: 'data', title: `${first(u.name)} recorded your body fat`, body: what, link: '/nutrition/bodyfat', actorId: u.id });
+    else notify(a.coach_id, { type: 'data', title: `${a.name} logged body fat`, body: what, link: `/athletes/${a.id}?tab=nutrition`, actorId: u.id });
     res.status(201).json({ id: Number(info.lastInsertRowid), body_fat_pct: pct, sum_mm: sum, ...composition(weight, pct) });
   });
 

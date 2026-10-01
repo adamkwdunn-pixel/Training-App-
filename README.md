@@ -43,6 +43,16 @@ Athletes enter their own details, and the app works everything out and shows the
 - **Injury reports:** body area, side, pain 0-10, and whether the athlete can train (full / modified / unavailable). Each report has its own message thread with the coach. The coach moves it through New → Monitoring → Rehab → Resolved.
 - **Protocols:** stretching, mobility, prehab, rehab and recovery routines, each a list of exercises with dose, cues and an optional demo link. Six starter protocols are included. The coach assigns protocols to athletes with a frequency, and athletes tick them off each day.
 
+### Notifications
+- A **🔔 inbox** in the app, plus **push notifications** to phones and computers (Web Push). Push works on Android, desktop browsers, and iPhone (iOS 16.4+, once the app is added to the home screen).
+- **Coach is notified when an athlete:** completes a session, sends a form check or max-lift video, sends a message or reply, checks in (⚠️ for low readiness), reports or updates an injury, logs a test, logs bodyweight or body fat, joins the squad, or trips a progression-rule flag.
+- **Athletes are notified about:** their session summary (including any program changes), coach comments on form checks, sessions and injuries, messages, new programs and protocols, tests recorded or verified by the coach, and a **daily check-in reminder** at a local time they choose (skipped if they've already checked in).
+- Each person picks which types they want under **🔔 → settings**. Tapping a notification opens the exact screen it refers to.
+- Push keys (VAPID) are generated automatically on first start and stored in the database. Set `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` to use your own.
+
+### Updates
+When a new version is deployed, anyone with the app open sees a **"New version available"** banner. One tap reloads it. Nothing needs reinstalling.
+
 ### Testing
 - Rep maxes for the main lifts: **Back Squat, Bench Press, Deadlift, Power Clean, Overhead Press, Weighted Chin-up**. Any other lift can be tested too.
 - Each test records weight × reps with an estimated 1RM, relative strength (× bodyweight), and an optional **video of the lift**. The coach can verify a test, and the full history is kept.
@@ -104,6 +114,7 @@ server/
 shared/
   nutrition.js        energy equations, macros, bodyweight trend — used by server and app
   bodyfat.js          US Navy, Jackson-Pollock 3/7-site, Siri
+server/notify.js      notification inbox, Web Push, daily check-in reminders
   seed.js             demo data
 client/src/
   pages/              coach + athlete screens

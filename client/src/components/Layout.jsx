@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
 import Icon from './Icon.jsx';
@@ -71,8 +72,18 @@ export function Brand({ big }) {
 }
 
 export default function Layout({ children }) {
-  const { user } = useAuth();
+  const { user, live } = useAuth();
   const { pathname } = useLocation();
+  // Re-check the unread count whenever the screen changes.
+  useEffect(() => {
+    live.refresh();
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bell = (cls) => (
+    <NavLink to="/notifications" className={cls} aria-label={`Notifications${live.unread ? ` (${live.unread} unread)` : ''}`}>
+      <span className="bell"><Icon name="bell" />{live.unread > 0 && <span className="bell-count">{live.unread > 99 ? '99+' : live.unread}</span>}</span>
+      {cls === 'side-link' && 'Notifications'}
+    </NavLink>
+  );
   const sections = user.role === 'coach' ? COACH_SECTIONS : ATHLETE_SECTIONS;
   const current = sectionFor(sections, pathname);
   const subs = current?.subs || [];
@@ -97,6 +108,7 @@ export default function Layout({ children }) {
           ))}
         </nav>
         <div className="sidebar-foot">
+          {bell('side-link')}
           {user.role === 'athlete' && <NavLink to="/messages" className="side-link"><Icon name="chat" /> Coach chat</NavLink>}
           <NavLink to="/profile" className="side-link"><Icon name="user" /> {user.name}</NavLink>
         </div>
@@ -107,6 +119,7 @@ export default function Layout({ children }) {
           <div className="topbar-row">
             <Brand />
             <div className="topbar-links">
+              {bell('icon-btn')}
               {user.role === 'athlete' && <NavLink to="/messages" className="icon-btn" aria-label="Coach chat"><Icon name="chat" /></NavLink>}
               <NavLink to="/profile" className="icon-btn" aria-label="Profile"><Icon name="user" /></NavLink>
             </div>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
-import { fmtDate, useApi } from '../util.js';
+import { fmtDate, today, useApi } from '../util.js';
 import { Badge, Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import { ScoreChip } from '../components/Ring.jsx';
@@ -25,7 +25,7 @@ const AVAIL_TONE = { full: 'ok', modified: 'warn', unavailable: 'bad' };
 const AVAIL = { full: 'Full', modified: 'Modified', unavailable: 'Unavailable' };
 
 export function RecoverySquad() {
-  const { data, error } = useApi('/recovery/squad');
+  const { data, error } = useApi(`/recovery/squad?today=${today()}`);
   if (!data) return <Loading error={error} />;
   const checkedIn = data.athletes.filter((a) => a.latest?.day === data.today);
   const injured = data.athletes.filter((a) => a.injuries.length);

@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import Icon from '../components/Icon.jsx';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
 import { PageHeader } from '../components/Bits.jsx';
@@ -37,6 +39,11 @@ export default function Profile() {
         {msg && <p className="small">{msg}</p>}
         <button className="btn primary">Save</button>
       </form>
+      <Link to="/settings/notifications" className="card flat row" style={{ border: '1px solid var(--line)', marginBottom: 14 }}>
+        <Icon name="bell" />
+        <div className="grow"><strong>Notifications</strong><div className="small muted">Phone alerts, what you’re notified about{user.role === 'athlete' ? ', check-in reminder time' : ''}</div></div>
+        <Icon name="right" size={18} />
+      </Link>
       <button className="btn ghost danger" onClick={signOut}>Sign out</button>
     </>
   );

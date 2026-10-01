@@ -71,6 +71,18 @@ What you're paying for:
    - Build your programs in the **Coach** tab.
    - Share your **team code** (shown on the Athletes page). Athletes open the site, choose **Join team**, and enter the code.
 4. **Profile → Change password** at any time.
+5. **Turn on notifications** on each phone or computer: tap the 🔔 bell → settings icon → **Turn on notifications**.
+   - **iPhone:** add the app to the home screen first (step 2), open it from there, then turn notifications on. This is an Apple rule (iOS 16.4 or later).
+   - You can choose which alerts you get. As the coach you can be told about completed sessions, form checks, messages, check-ins, injuries, tests, bodyweight/body fat entries and rule flags. Athletes get session summaries, coach feedback, new programs or protocols, and a daily check-in reminder at a time they choose.
+
+---
+
+## Making changes and updates
+
+- **Things you change inside the app** (programs, rules, maxes, protocols…) are live immediately.
+- **Code changes** come in as a **pull request** into the `main` branch on GitHub. Render deploys `main`, so an update goes live when you click **Merge** on the pull request, and not before. The deploy takes a few minutes, with about a minute of downtime, so merge at a quiet time.
+- **Athletes don't need to do anything.** If someone has the app open while an update goes live, a **"New version available — Update"** banner appears at the top. Tapping it loads the new version, and closing and reopening the app does the same.
+- **One-time setup:** make sure Render is watching `main`. In Render, open the service → **Settings → Build & Deploy → Branch** → choose `main`. In GitHub, go to the repo **Settings → General → Default branch** and set it to `main`.
 
 ---
 
