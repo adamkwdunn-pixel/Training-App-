@@ -17,7 +17,7 @@ const ATHLETE_SECTIONS = [
   },
   {
     key: 'nutrition', label: 'Nutrition', icon: 'apple', to: '/nutrition', match: ['/nutrition'],
-    subs: [{ to: '/nutrition', label: 'Food log' }, { to: '/nutrition/targets', label: 'Targets' }, { to: '/nutrition/weight', label: 'Bodyweight' }],
+    subs: [{ to: '/nutrition', label: 'Targets' }, { to: '/nutrition/weight', label: 'Bodyweight' }, { to: '/nutrition/bodyfat', label: 'Body fat' }],
   },
   {
     key: 'recovery', label: 'Recovery', icon: 'heart', to: '/recovery', match: ['/recovery'],
@@ -26,26 +26,24 @@ const ATHLETE_SECTIONS = [
   { key: 'testing', label: 'Testing', icon: 'trophy', to: '/testing', match: ['/testing'], subs: [] },
 ];
 
+// The Coach tab is only ever built for coach accounts (and the API refuses everyone else).
 const COACH_SECTIONS = [
   {
-    key: 'squad', label: 'Squad', icon: 'users', to: '/', match: ['/', '/athletes'],
-    subs: [{ to: '/', label: 'Inbox' }, { to: '/athletes', label: 'Athletes' }],
-  },
-  {
-    key: 'training', label: 'Training', icon: 'bolt', to: '/programs', match: ['/programs', '/videos', '/rules', '/exercises', '/logs'],
-    subs: [
-      { to: '/programs', label: 'Programs' },
-      { to: '/videos', label: 'Form checks' },
-      { to: '/rules', label: 'Progression rules' },
-      { to: '/exercises', label: 'Exercises' },
-    ],
+    key: 'training', label: 'Training', icon: 'bolt', to: '/', match: ['/', '/athletes', '/videos', '/logs'],
+    subs: [{ to: '/', label: 'Inbox' }, { to: '/athletes', label: 'Athletes' }, { to: '/videos', label: 'Form checks' }],
   },
   { key: 'nutrition', label: 'Nutrition', icon: 'apple', to: '/nutrition', match: ['/nutrition'], subs: [] },
-  {
-    key: 'recovery', label: 'Recovery', icon: 'heart', to: '/recovery', match: ['/recovery'],
-    subs: [{ to: '/recovery', label: 'Readiness & injuries' }, { to: '/recovery/protocols', label: 'Protocols' }],
-  },
+  { key: 'recovery', label: 'Recovery', icon: 'heart', to: '/recovery', match: ['/recovery'], subs: [] },
   { key: 'testing', label: 'Testing', icon: 'trophy', to: '/testing', match: ['/testing'], subs: [] },
+  {
+    key: 'coach', label: 'Coach', icon: 'clipboard', to: '/coach', match: ['/coach'],
+    subs: [
+      { to: '/coach', label: 'Programs' },
+      { to: '/coach/rules', label: 'Progression rules' },
+      { to: '/coach/exercises', label: 'Exercises' },
+      { to: '/coach/protocols', label: 'Protocols' },
+    ],
+  },
 ];
 
 function sectionFor(sections, path) {

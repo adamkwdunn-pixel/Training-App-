@@ -252,7 +252,7 @@ export function AssignedProtocols({ athleteId }) {
   const { data, error, reload } = useApi(`/athletes/${athleteId}/protocols`);
   const [open, setOpen] = useState(null);
   if (!data) return <Loading error={error} />;
-  if (!data.protocols.length) return <Empty>{isCoach ? 'No protocols assigned. Assign one from Recovery → Protocols.' : 'No stretching or rehab protocols assigned yet.'}</Empty>;
+  if (!data.protocols.length) return <Empty>{isCoach ? 'No protocols assigned. Assign one from Coach → Protocols.' : 'No stretching or rehab protocols assigned yet.'}</Empty>;
   const toggle = async (p) => {
     await api(`/protocol-assignments/${p.id}/complete`, { method: 'POST', body: { done: !p.done_today } });
     reload();

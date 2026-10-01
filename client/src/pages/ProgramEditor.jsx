@@ -20,7 +20,7 @@ export default function ProgramEditor() {
 
   const addDay = async (week) => {
     const { id: dayId } = await api(`/programs/${p.id}/days`, { method: 'POST', body: { week } });
-    nav(`/programs/${p.id}/days/${dayId}`);
+    nav(`/coach/programs/${p.id}/days/${dayId}`);
   };
   const dupDay = async (d) => {
     await api(`/days/${d.id}/duplicate`, { method: 'POST', body: {} });
@@ -40,17 +40,17 @@ export default function ProgramEditor() {
     const name = prompt('Name for the copy (e.g. for one athlete):', `${p.name} (copy)`);
     if (!name) return;
     const { program } = await api(`/programs/${p.id}/duplicate`, { method: 'POST', body: { name } });
-    nav(`/programs/${program.id}`);
+    nav(`/coach/programs/${program.id}`);
   };
   const remove = async () => {
     if (!confirm(`Delete “${p.name}”? Athletes on it will lose the program (their logs are kept).`)) return;
     await api(`/programs/${p.id}`, { method: 'DELETE' });
-    nav('/programs');
+    nav('/coach');
   };
 
   return (
     <>
-      <PageHeader title={p.name} back="/programs" sub={p.description}>
+      <PageHeader title={p.name} back="/coach" sub={p.description}>
         <button className="btn" onClick={() => setAssigning(!assigning)}><Icon name="users" /> Assign</button>
         <button className="btn ghost" onClick={() => setEditingInfo(!editingInfo)}>Edit</button>
       </PageHeader>
@@ -78,7 +78,7 @@ export default function ProgramEditor() {
             <div className="day-grid">
               {days.map((d) => (
                 <div key={d.id} className="day-card">
-                  <Link to={`/programs/${p.id}/days/${d.id}`} className="day-link">
+                  <Link to={`/coach/programs/${p.id}/days/${d.id}`} className="day-link">
                     <div className="day-title">D{d.day} · {d.title || 'Session'}</div>
                     {d.prescriptions.length === 0 && <div className="muted small">Empty — tap to add exercises</div>}
                     <ul>

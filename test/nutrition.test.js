@@ -1,47 +1,90 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mifflinStJeor, nutritionTargets, parseMfpCsv, ageFrom } from '../server/lib/nutrition.js';
+import { mifflinStJeor, katchMcArdle, nutritionTargets, ageFrom, withTrend, weeklyRate } from '../shared/nutrition.js';
+import { navyBodyFat, jacksonPollock, siri, composition, sitesFor } from '../shared/bodyfat.js';
 import { readinessScore } from '../server/lib/recovery.js';
 
-test('Mifflin-St Jeor matches hand calculation', () => {
+const base = { weight: 100, height: 185, age: 25, sex: 'male', activity: 1.55 };
+
+test('Mifflin-St Jeor and Katch-McArdle match hand calculation', () => {
   // 100 kg, 185 cm, 25 y male: 1000 + 1156.25 - 125 + 5
-  assert.equal(mifflinStJeor({ weight: 100, height: 185, age: 25, sex: 'male' }), 2036.25);
+  assert.equal(mifflinStJeor(base), 2036.25);
   assert.equal(mifflinStJeor({ weight: 70, height: 170, age: 30, sex: 'female' }), 700 + 1062.5 - 150 - 161);
   assert.equal(mifflinStJeor({ weight: 70, height: 170, sex: 'female' }), null);
+  assert.equal(katchMcArdle(85), 370 + 21.6 * 85);
 });
 
-test('targets apply activity and goal', () => {
-  const base = { weight: 100, height: 185, age: 25, sex: 'male', activity: 1.55, protein_g_per_kg: 2, fat_pct: 25 };
+test('goal adjusts calories from maintenance', () => {
   const maintain = nutritionTargets({ ...base, goal: 'maintain' });
   assert.equal(maintain.kcal, Math.round(2036.25 * 1.55));
-  const lose = nutritionTargets({ ...base, goal: 'lose', rate: 0.5 });
-  assert.equal(lose.adjust, -550);
-  assert.equal(lose.kcal, Math.round(2036.25 * 1.55 - 550));
-  const gain = nutritionTargets({ ...base, goal: 'gain', rate: 0.25 });
-  assert.equal(gain.adjust, 275);
-  assert.equal(maintain.protein, 200);
-  assert.equal(maintain.fat, Math.round((maintain.kcal * 0.25) / 9));
-  // Macro calories add back up to the target.
-  assert.ok(Math.abs(maintain.protein * 4 + maintain.carbs * 4 + maintain.fat * 9 - maintain.kcal) < 10);
-  assert.deepEqual(nutritionTargets({ weight: 100 }).missing, ['height', 'date of birth', 'sex']);
+  assert.equal(nutritionTargets({ ...base, goal: 'lose', rate: 0.5 }).adjust, -550);
+  assert.equal(nutritionTargets({ ...base, goal: 'gain', rate: 0.25 }).adjust, 275);
   assert.equal(nutritionTargets({ ...base, goal: 'lose', rate: 0.5, kcal_override: 3000 }).kcal, 3000);
+  assert.deepEqual(nutritionTargets({ weight: 100 }).missing, ['height', 'date of birth', 'sex']);
 });
 
-test('age from birth date', () => {
+test('macros per kg: carbs fill the remainder', () => {
+  const t = nutritionTargets({ ...base, macro_mode: 'per_kg', protein_g_per_kg: 2.2, fat_g_per_kg: 0.9 });
+  assert.equal(t.protein, 220);
+  assert.equal(t.fat, 90);
+  assert.ok(Math.abs(t.protein * 4 + t.carbs * 4 + t.fat * 9 - t.kcal) < 6);
+  assert.equal(t.per_kg.protein, 2.2);
+  assert.equal(t.pct.protein + t.pct.fat + t.pct.carbs, 100);
+});
+
+test('macros as % of calories', () => {
+  const t = nutritionTargets({ ...base, macro_mode: 'percent', protein_pct: 30, fat_pct: 25, kcal_override: 3000 });
+  assert.equal(t.protein, 225);
+  assert.equal(t.fat, Math.round(750 / 9));
+  assert.equal(t.carbs, Math.round(1350 / 4));
+});
+
+test('impossible macros are flagged, not negative', () => {
+  const t = nutritionTargets({ ...base, protein_g_per_kg: 4, fat_g_per_kg: 3, kcal_override: 2000 });
+  assert.equal(t.carbs, 0);
+  assert.equal(t.warnings.length, 1);
+});
+
+test('Katch-McArdle uses lean mass when chosen', () => {
+  const t = nutritionTargets({ ...base, bmr_equation: 'katch', lean_mass: 85 });
+  assert.equal(t.equation, 'katch');
+  assert.equal(t.bmr, Math.round(370 + 21.6 * 85));
+  const fallback = nutritionTargets({ ...base, bmr_equation: 'katch' });
+  assert.equal(fallback.equation, 'mifflin');
+  assert.equal(fallback.warnings.length, 1);
+});
+
+test('age, weight trend and weekly rate', () => {
   assert.equal(ageFrom('2000-06-15', new Date('2026-06-14T12:00:00')), 25);
-  assert.equal(ageFrom('2000-06-15', new Date('2026-06-15T12:00:00')), 26);
+  const days = Array.from({ length: 29 }, (_, i) => ({ date: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), weight: 100 - i * (0.5 / 7) }));
+  assert.equal(weeklyRate(days), -0.5);
+  const t = withTrend([{ date: '2026-01-01', weight: 100 }, { date: '2026-01-02', weight: 102 }, { date: '2026-01-20', weight: 90 }]);
+  assert.deepEqual(t.map((x) => x.trend), [100, 101, 90]);
 });
 
-test('MyFitnessPal CSV import', () => {
-  const csv = 'Date,Meal,Calories,Fat (g),Saturated Fat,Carbohydrates (g),Fiber,Protein (g),Note\n'
-    + '2026-09-28,Breakfast,820,25.5,8,95,6,48,\n'
-    + '"2026-09-28","Lunch","1,050",30,10,120,8,70,"chicken, rice"\n'
-    + '09/29/2026,Dinner,900,20,5,100,5,65,\n';
-  const rows = parseMfpCsv(csv);
-  assert.equal(rows.length, 3);
-  assert.deepEqual(rows[1], { eaten_on: '2026-09-28', meal: 'Lunch', kcal: 1050, protein: 70, carbs: 120, fat: 30 });
-  assert.equal(rows[2].eaten_on, '2026-09-29');
-  assert.throws(() => parseMfpCsv('foo,bar\n1,2'), /Date and Calories/);
+test('US Navy body fat', () => {
+  // Male 180 cm, neck 40, waist 85: 495 / (1.0324 − 0.19077·log10(45) + 0.15456·log10(180)) − 450
+  const expected = 495 / (1.0324 - 0.19077 * Math.log10(45) + 0.15456 * Math.log10(180)) - 450;
+  assert.equal(navyBodyFat({ sex: 'male', height: 180, neck: 40, waist: 85 }), Math.round(expected * 10) / 10);
+  const f = navyBodyFat({ sex: 'female', height: 165, neck: 32, waist: 70, hip: 95 });
+  assert.ok(f > 20 && f < 30);
+  assert.equal(navyBodyFat({ sex: 'female', height: 165, neck: 32, waist: 70 }), null); // hip required
+  assert.equal(navyBodyFat({ sex: 'male', height: 180, neck: 45, waist: 40 }), null);
+});
+
+test('Jackson-Pollock skinfolds + Siri', () => {
+  assert.deepEqual(sitesFor('jp3', 'male'), ['chest', 'abdominal', 'thigh']);
+  assert.deepEqual(sitesFor('jp3', 'female'), ['triceps', 'suprailiac', 'thigh']);
+  const m = jacksonPollock({ method: 'jp3', sex: 'male', age: 25, sites: { chest: 10, abdominal: 20, thigh: 15 } });
+  const S = 45;
+  const d = 1.10938 - 0.0008267 * S + 0.0000016 * S * S - 0.0002574 * 25;
+  assert.equal(m.sum, 45);
+  assert.equal(m.pct, Math.round(siri(d) * 10) / 10);
+  const seven = jacksonPollock({ method: 'jp7', sex: 'male', age: 25, sites: { chest: 8, midaxillary: 10, triceps: 9, subscapular: 12, abdominal: 18, suprailiac: 12, thigh: 11 } });
+  assert.equal(seven.sum, 80);
+  assert.ok(seven.pct > 8 && seven.pct < 15);
+  assert.equal(jacksonPollock({ method: 'jp3', sex: 'male', age: 25, sites: { chest: 10 } }), null);
+  assert.deepEqual(composition(100, 15), { fat_mass: 15, lean_mass: 85 });
 });
 
 test('readiness score', () => {

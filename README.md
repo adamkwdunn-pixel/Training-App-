@@ -6,7 +6,10 @@ It's a **web app you can install** (a PWA). Open the site on a phone, then "Add 
 
 ## What it does
 
-The app is split into four sections, each with its own tab: **Training, Nutrition, Recovery, Testing**. The coach also has a **Squad** tab (inbox + athletes). Every athlete page has tabs for all four sections, so you can see one athlete's full picture in one place.
+The app is split into four sections, each with its own tab: **Training, Nutrition, Recovery, Testing**. For the coach, Training also holds the inbox and athlete list. Every athlete page has tabs for all four sections, so you can see one athlete's full picture in one place.
+
+### Coach tab (coach accounts only)
+The Coach tab is where you **create and edit programs**, and manage your progression rules, exercise library, and recovery protocols. Athletes never see it, and the server refuses those requests from athlete accounts even if someone types the address directly. If you add another coach (see `COACH_SIGNUP_KEY`), each coach only sees their own programs and athletes.
 
 ### Training
 - **Programs:** weeks → sessions → exercises. Loads can be set as **% of max**, **RIR** (load worked out from the athlete's max using the RPE/RIR chart), **RPE**, **fixed kg**, **bodyweight** or **no load**. Speed, power and conditioning work uses numeric targets (e.g. 10 m in 1.85 s).
@@ -15,11 +18,25 @@ The app is split into four sections, each with its own tab: **Training, Nutritio
 - **Form checks:** slow motion and frame stepping, with a feedback thread on every video and session.
 
 ### Nutrition
-- **Food log** by meal, with a calorie ring and protein/carb/fat bars against the athlete's targets. Recent foods can be re-added in one tap.
-- **Targets (Mifflin-St Jeor):** resting energy = 10·kg + 6.25·cm − 5·age + 5 (male) / −161 (female). This is multiplied by an activity level to get maintenance, then adjusted for the athlete's goal: **lose / maintain / gain** at a chosen kg per week (7,700 kcal per kg). Protein is set in g/kg, fat as a % of calories, and carbs fill the rest. The coach can pin a calorie target that overrides the calculation.
-- **Bodyweight** log with a trend chart.
-- **MyFitnessPal:** MFP doesn't offer a public connection for other apps, so athletes upload MFP's **Nutrition Summary CSV export** instead (Reports → Export data on myfitnesspal.com, Premium only). Re-importing the same days replaces them rather than double counting.
-- **Coach view:** a squad table of each athlete's target vs 7-day average intake, protein, days logged and 28-day weight change.
+Athletes enter their own details, and the app works everything out and shows the working.
+- **Targets:** each step of the calculation is shown with the athlete's own numbers:
+  1. **Resting energy**, from one of two equations (the athlete chooses):
+     - **Mifflin-St Jeor:** 10·kg + 6.25·cm − 5·age + 5 (male) / −161 (female)
+     - **Katch-McArdle:** 370 + 21.6·lean mass. It uses the latest body fat measurement, so it suits heavily muscled athletes better.
+  2. × an **activity factor** → maintenance calories.
+  3. ± the **goal**: lose, maintain or gain, at a chosen rate (kg/week × 7,700 kcal ÷ 7).
+  4. **Macros**, adjustable with sliders: either protein and fat in **g per kg** or as **% of calories**. Carbohydrate fills whatever calories are left.
+  - Everything recalculates live as the athlete moves the sliders. The coach can pin a calorie target that overrides the calculation.
+- **Bodyweight:**
+  - Weigh-ins with a chart showing each weigh-in as a dot and the **7-day average** as a line.
+  - The 4-week rate of change in kg/week is compared with the goal, and marked on track or off target.
+  - A week-by-week table of averages and changes, with 4-week / 12-week / 6-month / all views.
+- **Body fat**, with a built-in explanation of each method and where to measure:
+  - **Calipers — Jackson-Pollock 3-site or 7-site:** the sum of skinfolds gives body density, which the Siri equation (495 ÷ density − 450) turns into body fat %. The sum of skinfolds in mm is also tracked, since many S&C staff prefer it.
+  - **US Navy tape method** (Hodgdon & Beckett): uses neck, waist, height, and hips for women.
+  - **Other:** record a result from DEXA, InBody, Bod Pod etc.
+  - Each measurement shows fat and lean mass, with trends charted for one method at a time. The coach can enter measurements for athletes (e.g. skinfolds on testing day).
+- **Coach view:** a squad table of each athlete's goal, targets, 7-day average bodyweight, 4-week rate vs goal, body fat and lean mass.
 
 ### Recovery
 - **Daily readiness check-in:** hours of sleep, plus sleep quality, energy, soreness, stress and mood on a 1-5 scale. These make a 0-100 score, and less than 7 h of sleep takes points off. Low scores appear in the coach's inbox.
@@ -77,9 +94,11 @@ server/
   db.js               SQLite schema
   lib/loads.js        % / RIR / RPE load maths, e1RM, rounding
   lib/progression.js  rule engine: session metrics → conditions → actions, plus presets
-  lib/nutrition.js    Mifflin-St Jeor targets, MyFitnessPal CSV parser
   lib/recovery.js     readiness score
-  routes/             nutrition, recovery (readiness, injuries, protocols), testing APIs
+  routes/             nutrition (targets, bodyweight, body fat), recovery, testing APIs
+shared/
+  nutrition.js        energy equations, macros, bodyweight trend — used by server and app
+  bodyfat.js          US Navy, Jackson-Pollock 3/7-site, Siri
   seed.js             demo data
 client/src/
   pages/              coach + athlete screens

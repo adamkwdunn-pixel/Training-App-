@@ -1,11 +1,12 @@
 /** Responsive SVG line chart with a soft fill and an optional dashed target line. */
-export default function LineChart({ points, yKey, label, lowerIsBetter = false, unit = '', target, xKey = 'date' }) {
+export default function LineChart({ points, yKey, label, lowerIsBetter = false, unit = '', target, xKey = 'date', trendKey }) {
   const data = points.filter((p) => p[yKey] != null);
   if (data.length === 0) return <p className="muted small">No {label.toLowerCase()} data yet.</p>;
   const W = 600;
   const H = 210;
   const pad = { l: 44, r: 12, t: 14, b: 26 };
   const ys = data.map((p) => p[yKey]);
+  const lineKey = trendKey || yKey; // with a trend, dots are raw values and the line is the smoothed series
   let min = Math.min(...ys, ...(target != null ? [target] : []));
   let max = Math.max(...ys, ...(target != null ? [target] : []));
   if (min === max) {
@@ -17,10 +18,10 @@ export default function LineChart({ points, yKey, label, lowerIsBetter = false, 
   max += span * 0.12;
   const x = (i) => pad.l + (data.length === 1 ? (W - pad.l - pad.r) / 2 : (i / (data.length - 1)) * (W - pad.l - pad.r));
   const y = (v) => pad.t + (1 - (v - min) / (max - min)) * (H - pad.t - pad.b);
-  const path = data.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p[yKey]).toFixed(1)}`).join(' ');
+  const path = data.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p[lineKey]).toFixed(1)}`).join(' ');
   const area = `${path} L${x(data.length - 1).toFixed(1)},${H - pad.b} L${x(0).toFixed(1)},${H - pad.b} Z`;
-  const first = ys[0];
-  const last = ys[ys.length - 1];
+  const first = trendKey ? data[0][trendKey] : ys[0];
+  const last = trendKey ? data[data.length - 1][trendKey] : ys[ys.length - 1];
   const delta = last - first;
   const good = lowerIsBetter ? delta < 0 : delta > 0;
   const ticks = [min + (max - min) * 0.12, (min + max) / 2, max - (max - min) * 0.12];
@@ -55,7 +56,7 @@ export default function LineChart({ points, yKey, label, lowerIsBetter = false, 
         {data.length > 1 && <path d={area} className="area" />}
         <path d={path} className="line" />
         {data.map((p, i) => (
-          <circle key={`${p[xKey]}${i}`} cx={x(i)} cy={y(p[yKey])} r={data.length > 30 ? 2 : 3.5} className="dot">
+          <circle key={`${p[xKey]}${i}`} cx={x(i)} cy={y(p[yKey])} r={trendKey ? 2.5 : data.length > 30 ? 2 : 3.5} className={trendKey ? 'dot raw' : 'dot'}>
             <title>{`${p[xKey]}: ${r1(p[yKey])}${unit}`}</title>
           </circle>
         ))}

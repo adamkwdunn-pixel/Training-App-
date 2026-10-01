@@ -28,11 +28,11 @@ export default function AthleteHome() {
           </div>
           {!ready?.today && <span className="dot-new" />}
         </Link>
-        <Link to="/nutrition" className="card flat row" style={{ margin: 0, border: '1px solid var(--line)' }}>
+        <Link to={food?.targets.kcal ? '/nutrition/weight' : '/nutrition'} className="card flat row" style={{ margin: 0, border: '1px solid var(--line)' }}>
           <Icon name="apple" />
           <div className="grow">
-            <strong className="tabular">{Math.round(food?.totals.kcal || 0)}{food?.targets.kcal ? ` / ${food.targets.kcal}` : ''} kcal</strong>
-            <div className="small muted">{food?.targets.kcal ? `Protein ${Math.round(food.totals.protein)} / ${food.targets.protein} g` : 'Set up your nutrition targets'}</div>
+            <strong className="tabular">{food?.targets.kcal ? `${food.targets.kcal} kcal · P ${food.targets.protein} g` : 'Nutrition targets'}</strong>
+            <div className="small muted">{food?.weights.at(-1) ? `Bodyweight ${food.weights.at(-1).trend} kg (7-day avg)` : 'Set up your targets and log your weight'}</div>
           </div>
         </Link>
       </div>

@@ -97,12 +97,12 @@ export default function DayEditor() {
   const idx = ordered.findIndex((d) => d.id === day.id);
   const go = (d) => {
     if (dirty && !confirm('You have unsaved changes. Leave anyway?')) return;
-    nav(`/programs/${program.id}/days/${d.id}`);
+    nav(`/coach/programs/${program.id}/days/${d.id}`);
   };
 
   return (
     <>
-      <PageHeader title={`Week ${day.week} · Day ${day.day}`} back={`/programs/${program.id}`} sub={program.name}>
+      <PageHeader title={`Week ${day.week} · Day ${day.day}`} back={`/coach/programs/${program.id}`} sub={program.name}>
         {idx > 0 && <button className="btn ghost small" onClick={() => go(ordered[idx - 1])}>← Prev</button>}
         {idx < ordered.length - 1 && <button className="btn ghost small" onClick={() => go(ordered[idx + 1])}>Next →</button>}
       </PageHeader>
@@ -147,7 +147,7 @@ export default function DayEditor() {
             ) : null;
           })}
         </select>
-        <Link to="/exercises" className="small">Manage library</Link>
+        <Link to="/coach/exercises" className="small">Manage library</Link>
       </div>
 
       <div className="save-bar">

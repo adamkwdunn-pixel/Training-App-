@@ -180,25 +180,14 @@ CREATE TABLE IF NOT EXISTS nutrition_profiles (
   activity REAL NOT NULL DEFAULT 1.55,
   goal TEXT NOT NULL DEFAULT 'maintain',      -- maintain | gain | lose
   rate REAL NOT NULL DEFAULT 0.25,            -- kg per week for gain / lose
+  bmr_equation TEXT NOT NULL DEFAULT 'mifflin', -- mifflin | katch
+  macro_mode TEXT NOT NULL DEFAULT 'per_kg',  -- per_kg | percent (carbs always fill the remainder)
   protein_g_per_kg REAL NOT NULL DEFAULT 2.0,
+  fat_g_per_kg REAL NOT NULL DEFAULT 1.0,
+  protein_pct REAL NOT NULL DEFAULT 30,
   fat_pct REAL NOT NULL DEFAULT 25,
   kcal_override REAL,                         -- coach can pin a calorie target
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS food_entries (
-  id INTEGER PRIMARY KEY,
-  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  eaten_on TEXT NOT NULL,
-  meal TEXT NOT NULL DEFAULT 'Snacks',
-  name TEXT NOT NULL,
-  quantity TEXT,
-  kcal REAL NOT NULL DEFAULT 0,
-  protein REAL NOT NULL DEFAULT 0,
-  carbs REAL NOT NULL DEFAULT 0,
-  fat REAL NOT NULL DEFAULT 0,
-  source TEXT NOT NULL DEFAULT 'manual',      -- manual | mfp
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS bodyweight_logs (
@@ -206,6 +195,20 @@ CREATE TABLE IF NOT EXISTS bodyweight_logs (
   measured_on TEXT NOT NULL,
   weight REAL NOT NULL,
   PRIMARY KEY (athlete_id, measured_on)
+);
+
+CREATE TABLE IF NOT EXISTS body_measurements (
+  id INTEGER PRIMARY KEY,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  measured_on TEXT NOT NULL,
+  method TEXT NOT NULL,                       -- navy | jp3 | jp7 | other
+  inputs TEXT NOT NULL DEFAULT '{}',          -- JSON: skinfolds (mm) or circumferences (cm)
+  bodyweight REAL,
+  body_fat_pct REAL NOT NULL,
+  sum_mm REAL,
+  notes TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ---------- recovery ----------
@@ -281,7 +284,7 @@ CREATE TABLE IF NOT EXISTS test_results (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_food_day ON food_entries(athlete_id, eaten_on);
+CREATE INDEX IF NOT EXISTS idx_bodycomp ON body_measurements(athlete_id, measured_on);
 CREATE INDEX IF NOT EXISTS idx_readiness ON readiness(athlete_id, day);
 CREATE INDEX IF NOT EXISTS idx_tests ON test_results(athlete_id, exercise_id, tested_on);
 CREATE INDEX IF NOT EXISTS idx_logs_athlete ON workout_logs(athlete_id, performed_on);
@@ -304,6 +307,11 @@ function migrate(db) {
   const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
   for (const [col, type] of [['sex', 'TEXT'], ['birth_date', 'TEXT'], ['height_cm', 'REAL']]) {
     if (!cols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
+  }
+  const np = new Set(db.prepare('PRAGMA table_info(nutrition_profiles)').all().map((c) => c.name));
+  for (const [col, def] of [['bmr_equation', "TEXT NOT NULL DEFAULT 'mifflin'"], ['macro_mode', "TEXT NOT NULL DEFAULT 'per_kg'"],
+    ['fat_g_per_kg', 'REAL NOT NULL DEFAULT 1.0'], ['protein_pct', 'REAL NOT NULL DEFAULT 30']]) {
+    if (!np.has(col)) db.exec(`ALTER TABLE nutrition_profiles ADD COLUMN ${col} ${def}`);
   }
   // Comments gained the 'injury' thread type; SQLite can't alter a CHECK, so rebuild the table.
   const sql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'comments'").get()?.sql || '';

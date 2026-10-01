@@ -23,7 +23,7 @@ export default function CoachHome() {
       {nothing && (
         <Empty>
           All caught up. Share your team code <strong className="code">{user.invite_code}</strong> so athletes can join, then
-          build a <Link to="/programs">program</Link>.
+          build a <Link to="/coach">program</Link>.
         </Empty>
       )}
 

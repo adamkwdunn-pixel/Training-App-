@@ -8,7 +8,7 @@ import MaxesTable from '../components/MaxesTable.jsx';
 import ProgressView from '../components/ProgressView.jsx';
 import Thread from '../components/Thread.jsx';
 import Icon from '../components/Icon.jsx';
-import { FoodLog, IntakeTrend, NutritionTargets } from '../components/Nutrition.jsx';
+import { BodyFat, Bodyweight, NutritionTargets } from '../components/Nutrition.jsx';
 import { AssignedProtocols, Injuries, ReadinessFor } from '../components/Recovery.jsx';
 import TestingView from '../components/Testing.jsx';
 
@@ -89,13 +89,13 @@ function NutritionTab({ athleteId }) {
   return (
     <>
       <div className="segmented" style={{ maxWidth: 380 }}>
-        {[['targets', 'Targets'], ['trend', '2-week trend'], ['log', 'Food log']].map(([k, l]) => (
+        {[['targets', 'Targets'], ['weight', 'Bodyweight'], ['bodyfat', 'Body fat']].map(([k, l]) => (
           <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>
         ))}
       </div>
       {view === 'targets' && <NutritionTargets athleteId={athleteId} />}
-      {view === 'trend' && <IntakeTrend athleteId={athleteId} />}
-      {view === 'log' && <FoodLog athleteId={athleteId} />}
+      {view === 'weight' && <Bodyweight athleteId={athleteId} />}
+      {view === 'bodyfat' && <BodyFat athleteId={athleteId} />}
     </>
   );
 }
@@ -127,7 +127,7 @@ function ProgramTab({ athlete, assignments, reload }) {
           {assignments.map((asg) => (
             <div key={asg.id} className="row wrap">
               <div className="grow">
-                <Link to={`/programs/${asg.program_id}`}><strong>{asg.program_name}</strong></Link>{' '}
+                <Link to={`/coach/programs/${asg.program_id}`}><strong>{asg.program_name}</strong></Link>{' '}
                 {asg.active ? <Badge tone="ok">Active</Badge> : <Badge>Inactive</Badge>}
                 <div className="muted small">From {fmtDate(asg.start_date)}</div>
               </div>

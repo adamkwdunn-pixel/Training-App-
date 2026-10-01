@@ -1,20 +1,20 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
-import { useApi } from '../util.js';
+import { fmtDate, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
-import { Bodyweight, FoodLog, NutritionTargets } from '../components/Nutrition.jsx';
+import { BodyFat, Bodyweight, NutritionTargets } from '../components/Nutrition.jsx';
 
-export function MyFood() {
-  const { user } = useAuth();
-  return (<><PageHeader title="Food log" /><FoodLog athleteId={user.id} /></>);
-}
 export function MyTargets() {
   const { user } = useAuth();
-  return (<><PageHeader title="Targets" sub="Mifflin-St Jeor energy needs, adjusted for your goal" /><NutritionTargets athleteId={user.id} /></>);
+  return (<><PageHeader title="Targets" sub="Calories and macros from the equations — adjust and see it update" /><NutritionTargets athleteId={user.id} /></>);
 }
 export function MyWeight() {
   const { user } = useAuth();
-  return (<><PageHeader title="Bodyweight" /><Bodyweight athleteId={user.id} /></>);
+  return (<><PageHeader title="Bodyweight" sub="Daily weigh-ins and your trend" /><Bodyweight athleteId={user.id} /></>);
+}
+export function MyBodyFat() {
+  const { user } = useAuth();
+  return (<><PageHeader title="Body fat" sub="Calipers or US Navy tape method" /><BodyFat athleteId={user.id} /></>);
 }
 
 const GOAL = { lose: 'Lose', maintain: 'Maintain', gain: 'Gain' };
@@ -24,28 +24,29 @@ export function NutritionSquad() {
   if (!data) return <Loading error={error} />;
   return (
     <>
-      <PageHeader title="Nutrition" sub="Targets vs the last 7 days of logged intake" />
+      <PageHeader title="Nutrition" sub="Targets, bodyweight trends and body composition" />
       {data.athletes.length === 0 && <Empty>No athletes yet.</Empty>}
       {data.athletes.length > 0 && (
         <div className="card" style={{ padding: '6px 8px' }}>
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Athlete</th><th>Goal</th><th>Target</th><th>7-day avg</th><th>Protein</th><th>Days logged</th><th>BW</th><th>28 d</th></tr>
+                <tr><th>Athlete</th><th>Goal</th><th>Calories</th><th>Protein</th><th>BW (7-d avg)</th><th>Rate kg/wk</th><th>Body fat</th><th>Lean</th></tr>
               </thead>
               <tbody>
                 {data.athletes.map((a) => {
-                  const diff = a.avg_kcal && a.targets.kcal ? a.avg_kcal - a.targets.kcal : null;
+                  const target = a.goal === 'maintain' ? 0 : a.goal === 'gain' ? a.rate : -a.rate;
+                  const off = a.rate_28d != null && Math.abs(a.rate_28d - target) > 0.25;
                   return (
                     <tr key={a.id}>
-                      <td><Link to={`/athletes/${a.id}?tab=nutrition`}>{a.name}</Link></td>
+                      <td><Link to={`/athletes/${a.id}?tab=nutrition`}>{a.name}</Link>{a.position && <div className="tiny muted">{a.position}</div>}</td>
                       <td>{GOAL[a.goal]}{a.goal !== 'maintain' ? <span className="muted tiny"> {a.rate}/wk</span> : ''}</td>
-                      <td>{a.targets.kcal ?? <span className="muted tiny">needs profile</span>}</td>
-                      <td>{a.avg_kcal ?? '—'}{diff != null && <span className={`tiny ${Math.abs(diff) > 300 ? 'muted' : 'faint'}`}> {diff > 0 ? '+' : ''}{diff}</span>}</td>
-                      <td>{a.avg_protein ?? '—'}{a.targets.protein ? <span className="faint tiny"> / {a.targets.protein}</span> : ''}</td>
-                      <td>{a.days_logged}/7</td>
-                      <td>{a.bodyweight ?? '—'}</td>
-                      <td>{a.weight_change_28d != null ? `${a.weight_change_28d > 0 ? '+' : ''}${a.weight_change_28d}` : '—'}</td>
+                      <td>{a.targets.kcal ?? <span className="muted tiny">needs profile</span>}{a.targets.overridden && <span className="tiny muted"> (set)</span>}</td>
+                      <td>{a.targets.protein != null ? `${a.targets.protein} g` : '—'}</td>
+                      <td>{a.trend ?? '—'}{a.last_weigh_in && <div className="tiny muted">{fmtDate(a.last_weigh_in)}</div>}</td>
+                      <td style={{ color: off ? 'var(--warn)' : undefined }}>{a.rate_28d != null ? `${a.rate_28d > 0 ? '+' : ''}${a.rate_28d}` : '—'}</td>
+                      <td>{a.body_fat_pct != null ? `${a.body_fat_pct}%` : '—'}{a.body_fat_on && <div className="tiny muted">{fmtDate(a.body_fat_on)}</div>}</td>
+                      <td>{a.lean_mass ?? '—'}</td>
                     </tr>
                   );
                 })}
@@ -54,6 +55,7 @@ export function NutritionSquad() {
           </div>
         </div>
       )}
+      <p className="tiny muted">Rate is the 4-week bodyweight trend; amber means more than 0.25 kg/week away from the athlete’s goal.</p>
     </>
   );
 }

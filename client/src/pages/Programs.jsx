@@ -14,13 +14,13 @@ export default function Programs() {
   const create = async (e) => {
     e.preventDefault();
     const { program } = await api('/programs', { method: 'POST', body: f });
-    nav(`/programs/${program.id}`);
+    nav(`/coach/programs/${program.id}`);
   };
 
   if (!data) return <Loading error={error} />;
   return (
     <>
-      <PageHeader title="Programs">
+      <PageHeader title="Programs" sub="Coach only — build, edit and assign training programs">
         <button className="btn primary" onClick={() => setCreating(!creating)}><Icon name="plus" /> New</button>
       </PageHeader>
       {creating && (
@@ -37,7 +37,7 @@ export default function Programs() {
       {data.programs.length === 0 && !creating && <Empty>No programs yet. Create one, add sessions, then assign it to athletes.</Empty>}
       <div className="list">
         {data.programs.map((p) => (
-          <Link key={p.id} to={`/programs/${p.id}`} className="row">
+          <Link key={p.id} to={`/coach/programs/${p.id}`} className="row">
             <Icon name="calendar" />
             <div className="grow">
               <strong>{p.name}</strong>

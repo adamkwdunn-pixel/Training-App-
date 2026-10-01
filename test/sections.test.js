@@ -28,32 +28,45 @@ test('nutrition, recovery and testing sections', async () => {
   const A = a.token;
   const id = a.user.id;
 
-  // ---- Nutrition: profile -> Mifflin-St Jeor targets, food log, MFP import
+  // ---- Nutrition: profile -> equations + adjustable macros, bodyweight trend, body fat
   let n = (await call('GET', `/athletes/${id}/nutrition`, A)).data;
   assert.ok(n.targets.missing.length);
-  const prof = await call('PUT', `/athletes/${id}/nutrition/profile`, A, { sex: 'male', birth_date: '2000-01-01', height_cm: 185, weight: 100, activity: 1.55, goal: 'lose', rate: 0.5, kcal_override: 1000 });
+  const prof = await call('PUT', `/athletes/${id}/nutrition/profile`, A, {
+    sex: 'male', birth_date: '2000-01-01', height_cm: 185, weight: 100, activity: 1.55, goal: 'lose', rate: 0.5,
+    protein_g_per_kg: 2.2, fat_g_per_kg: 0.8, kcal_override: 1000,
+  });
   assert.equal(prof.status, 200);
   assert.equal(prof.data.targets.adjust, -550);
+  assert.equal(prof.data.targets.protein, 220);
   assert.equal(prof.data.targets.overridden, false); // athletes can't pin calories
+  assert.equal((await call('PUT', `/athletes/${id}/nutrition/profile`, A, { macro_mode: 'percent', protein_pct: 60, fat_pct: 40 })).status, 400);
   const pinned = await call('PUT', `/athletes/${id}/nutrition/profile`, C, { kcal_override: 3200 });
   assert.equal(pinned.data.targets.kcal, 3200);
 
-  await call('POST', `/athletes/${id}/food`, A, { meal: 'Breakfast', name: 'Oats', protein: 20, carbs: 60, fat: 10 });
+  for (const [d, w] of [['2026-09-01', 101], ['2026-09-08', 100.5], ['2026-09-15', 100]]) {
+    await call('POST', `/athletes/${id}/bodyweight`, A, { measured_on: d, weight: w });
+  }
   n = (await call('GET', `/athletes/${id}/nutrition`, A)).data;
-  assert.equal(n.totals.kcal, 20 * 4 + 60 * 4 + 10 * 9);
-  assert.equal(n.recent[0].name, 'Oats');
+  assert.equal(n.weights.length, 4); // + today's from the profile
+  assert.ok(n.weights.every((w) => w.trend != null));
 
-  const csv = 'Date,Meal,Calories,Fat,Carbohydrates,Protein\n2026-09-01,Lunch,900,30,90,60\n2026-09-01,Dinner,1000,30,100,70\n';
-  const imp = await call('POST', `/athletes/${id}/food/import-mfp`, A, { csv });
-  assert.equal(imp.data.imported, 2);
-  await call('POST', `/athletes/${id}/food/import-mfp`, A, { csv }); // re-import doesn't duplicate
-  n = (await call('GET', `/athletes/${id}/nutrition?date=2026-09-01`, A)).data;
-  assert.equal(n.totals.kcal, 1900);
+  const navy = await call('POST', `/athletes/${id}/bodycomp`, A, { method: 'navy', neck: 42, waist: 88, measured_on: '2026-09-15' });
+  assert.equal(navy.status, 201);
+  assert.ok(navy.data.body_fat_pct > 10 && navy.data.body_fat_pct < 20);
+  const jp = await call('POST', `/athletes/${id}/bodycomp`, C, { method: 'jp7', sites: { chest: 8, midaxillary: 10, triceps: 9, subscapular: 12, abdominal: 18, suprailiac: 12, thigh: 11 } });
+  assert.equal(jp.data.sum_mm, 80);
+  assert.equal((await call('POST', `/athletes/${id}/bodycomp`, A, { method: 'jp3', sites: { chest: 8 } })).status, 400);
+  const bc = (await call('GET', `/athletes/${id}/bodycomp`, A)).data;
+  assert.equal(bc.measurements.length, 2);
+  assert.ok(bc.measurements[1].lean_mass > 80);
 
-  await call('POST', `/athletes/${id}/bodyweight`, A, { weight: 99.4 });
+  // Katch-McArdle now has lean mass to work with.
+  const katch = await call('PUT', `/athletes/${id}/nutrition/profile`, A, { bmr_equation: 'katch' });
+  assert.equal(katch.data.targets.equation, 'katch');
+
   const squadN = (await call('GET', '/nutrition/squad', C)).data.athletes[0];
-  assert.equal(squadN.bodyweight, 99.4);
   assert.equal(squadN.goal, 'lose');
+  assert.equal(squadN.body_fat_pct, jp.data.body_fat_pct);
 
   // ---- Recovery: readiness, injuries (+ thread), protocols
   const r = await call('POST', `/athletes/${id}/readiness`, A, { sleep_hours: 8, sleep_quality: 2, energy: 2, soreness: 2, stress: 3, mood: 3 });

@@ -107,26 +107,30 @@ const profiles = [
   { sex: 'male', birth_date: '2001-09-03', height_cm: 188, weight: 104, goal: 'gain', rate: 0.25, activity: 1.725 },
   { sex: 'male', birth_date: '2002-01-22', height_cm: 183, weight: 95, goal: 'lose', rate: 0.5, activity: 1.725 },
 ];
-const foods = [
-  ['Breakfast', 'Overnight oats with whey', '1 bowl', 620, 45, 80, 14],
-  ['Breakfast', 'Eggs on toast', '4 eggs, 2 slices', 520, 32, 30, 28],
-  ['Lunch', 'Chicken burrito bowl', 'large', 950, 62, 110, 24],
-  ['Pre-training', 'Banana + rice cakes', '', 260, 4, 58, 2],
-  ['Dinner', 'Salmon, rice and greens', '', 880, 55, 85, 32],
-  ['Snacks', 'Greek yoghurt + berries', '300 g', 290, 28, 30, 6],
+const sites7 = [
+  { chest: 14, midaxillary: 18, triceps: 13, subscapular: 20, abdominal: 28, suprailiac: 19, thigh: 16 },
+  { chest: 6, midaxillary: 8, triceps: 7, subscapular: 10, abdominal: 12, suprailiac: 8, thigh: 9 },
+  { chest: 10, midaxillary: 12, triceps: 10, subscapular: 13, abdominal: 20, suprailiac: 14, thigh: 13 },
 ];
 for (let i = 0; i < athletes.length; i++) {
   const a = athletes[i];
-  await call('PUT', `/athletes/${a.user.id}/nutrition/profile`, a.token, profiles[i]);
+  const p = profiles[i];
+  await call('PUT', `/athletes/${a.user.id}/nutrition/profile`, a.token, { ...p, protein_g_per_kg: [1.8, 2.2, 2.4][i], fat_g_per_kg: [1.0, 1.0, 0.8][i] });
+  // ~10 weeks of weigh-ins (not every day) following each athlete's goal, with day-to-day noise.
+  const perDay = (i === 2 ? -0.45 : i === 1 ? 0.22 : 0) / 7;
+  for (let d = 70; d >= 0; d--) {
+    if (d % 7 === 3 || d % 7 === 5) continue;
+    const noise = Math.sin(d * 2.3 + i) * 0.45;
+    await call('POST', `/athletes/${a.user.id}/bodyweight`, a.token, { measured_on: daysAgo(d), weight: +(p.weight - perDay * d + noise).toFixed(1) });
+  }
+  // Skinfolds every 4 weeks, trending with the goal.
+  for (const [k, d] of [[2, 56], [1, 28], [0, 1]]) {
+    const shift = i === 2 ? k * 2 : i === 1 ? -k * 0.5 : k * 0.5;
+    const sites = Object.fromEntries(Object.entries(sites7[i]).map(([s2, v]) => [s2, +(v + shift).toFixed(1)]));
+    await call('POST', `/athletes/${a.user.id}/bodycomp`, T, { method: 'jp7', measured_on: daysAgo(d), sites, notes: 'Pre-training, right side' });
+  }
+  await call('POST', `/athletes/${a.user.id}/bodycomp`, a.token, { method: 'navy', measured_on: daysAgo(14), neck: [46, 41, 39][i], waist: [104, 86, 88][i] });
   for (let d = 13; d >= 0; d--) {
-    await call('POST', `/athletes/${a.user.id}/bodyweight`, a.token, { measured_on: daysAgo(d), weight: +(profiles[i].weight + (i === 2 ? d * 0.07 : i === 1 ? -d * 0.04 : (d % 3) * 0.2 - 0.2)).toFixed(1) });
-    if (d > 0 || i === 0) {
-      for (const [meal, name, quantity, kcal, protein, carbs, fat] of foods) {
-        if (Math.random() < 0.15 && d > 0) continue;
-        const scale = i === 0 ? 1.25 : i === 1 ? 1.1 : 0.85;
-        await call('POST', `/athletes/${a.user.id}/food`, a.token, { eaten_on: daysAgo(d), meal, name, quantity, kcal: Math.round(kcal * scale), protein: Math.round(protein * scale), carbs: Math.round(carbs * scale), fat: Math.round(fat * scale) });
-      }
-    }
     const base = [4, 3, 4][i];
     const v = (o) => Math.max(1, Math.min(5, base + o + (d % 4 === 0 ? -1 : 0)));
     await call('POST', `/athletes/${a.user.id}/readiness`, a.token, {
