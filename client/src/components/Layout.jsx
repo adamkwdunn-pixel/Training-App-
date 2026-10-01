@@ -25,6 +25,8 @@ const ATHLETE_SECTIONS = [
     subs: [{ to: '/recovery', label: 'Check-in' }, { to: '/recovery/injuries', label: 'Injuries' }, { to: '/recovery/protocols', label: 'Protocols' }],
   },
   { key: 'testing', label: 'Testing', icon: 'trophy', to: '/testing', match: ['/testing'], subs: [] },
+  // Visible to everyone, but athletes only ever get the "For coaches only" page here.
+  { key: 'coach', label: 'Coach', icon: 'lock', to: '/coach', match: ['/coach'], subs: [] },
 ];
 
 // The Coach tab is only ever built for coach accounts (and the API refuses everyone else).
@@ -63,10 +65,11 @@ function sectionFor(sections, path) {
 }
 
 export function Brand({ big }) {
+  if (big) return <img className="brand-lockup" src="/logo.png" alt="AD Rugby Coaching" />;
   return (
-    <div className={`brand ${big ? 'big' : ''}`}>
-      <span className="brand-mark"><Icon name="ball" size={big ? 24 : 17} /></span>
-      <span>Squad Training</span>
+    <div className="brand">
+      <img className="brand-mark-img" src="/logo-mark.png" alt="" />
+      <span>AD Rugby Coaching</span>
     </div>
   );
 }

@@ -20,7 +20,7 @@ test('metrics from logged sets', () => {
 test('RIR double progression adds 5 kg when sets feel easy', () => {
   const sets = Array(3).fill({ weight: 100, reps: 5, rir: 4 });
   const m = computeMetrics(rx, sets, {});
-  const out = applyRule(rule('RIR-guided double progression'), m, { max: 130, load_offset: 0 });
+  const out = applyRule(rule('RIR-guided progression'), m, { max: 130, load_offset: 0 });
   assert.equal(out.matched, 'Too easy');
   assert.equal(out.state.load_offset, 5);
 });
@@ -28,7 +28,7 @@ test('RIR double progression adds 5 kg when sets feel easy', () => {
 test('missed reps cuts load by a percentage of the prescribed load', () => {
   const sets = [{ weight: 100, reps: 3, rir: 0 }, { weight: 100, reps: 3, rir: 0 }, { weight: 100, reps: 3, rir: 0 }];
   const m = computeMetrics(rx, sets, {});
-  const out = applyRule(rule('RIR-guided double progression'), m, { max: 130, load_offset: 0 }, { lastLoad: 100 });
+  const out = applyRule(rule('RIR-guided progression'), m, { max: 130, load_offset: 0 }, { lastLoad: 100 });
   assert.equal(out.matched, 'Missed reps');
   assert.equal(out.state.load_offset, -5);
 });

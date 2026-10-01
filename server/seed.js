@@ -87,7 +87,7 @@ export async function seedDemo(db, { coachName, coachEmail, coachPassword } = DE
     ];
     for (let i = 0; i < athletes.length; i++) {
       const a = athletes[i];
-      await call('POST', '/assignments', T, { program_id: program.id, athlete_ids: [a.user.id], rule_id: rule('RIR-guided double progression'), start_date: daysAgo(10) });
+      await call('POST', '/assignments', T, { program_id: program.id, athlete_ids: [a.user.id], rule_id: rule('RIR-guided progression'), start_date: daysAgo(10) });
       for (const [name, max] of Object.entries(maxes[i])) await call('PUT', `/athletes/${a.user.id}/state/${ex(name)}`, T, { max });
     }
 

@@ -6,7 +6,11 @@ import { useAuth } from '../App.jsx';
 import { PageHeader } from '../components/Bits.jsx';
 
 export default function Profile() {
-  const { user, coach, signOut, refresh } = useAuth();
+  const { user, coach, signOut, refresh, signIn } = useAuth();
+  const switchView = async () => {
+    const out = await api('/me/switch', { method: 'POST' });
+    signIn(out.token, out.user);
+  };
   const [f, setF] = useState({ name: user.name, position: user.position || '', bodyweight: user.bodyweight || '', current_password: '', new_password: '' });
   const [msg, setMsg] = useState('');
   const save = async (e) => {
@@ -39,6 +43,13 @@ export default function Profile() {
         {msg && <p className="small">{msg}</p>}
         <button className="btn primary">Save</button>
       </form>
+      {user.linked_user_id && (
+        <button className="card flat row" style={{ border: '1px solid var(--line)', marginBottom: 14, width: '100%' }} onClick={switchView}>
+          <Icon name={user.role === 'coach' ? 'user' : 'clipboard'} />
+          <div className="grow"><strong>Switch to {user.role === 'coach' ? 'your athlete view' : 'coach view'}</strong><div className="small muted">No need to sign out</div></div>
+          <Icon name="right" size={18} />
+        </button>
+      )}
       <Link to="/settings/notifications" className="card flat row" style={{ border: '1px solid var(--line)', marginBottom: 14 }}>
         <Icon name="bell" />
         <div className="grow"><strong>Notifications</strong><div className="small muted">Phone alerts, what you’re notified about{user.role === 'athlete' ? ', check-in reminder time' : ''}</div></div>

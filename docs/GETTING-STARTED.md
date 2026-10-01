@@ -69,11 +69,40 @@ What you're paying for:
 3. **When you're ready for real athletes:**
    - In **Training → Athletes**, open each demo athlete → **Settings → Remove from squad**.
    - Build your programs in the **Coach** tab.
-   - Share your **team code** (shown on the Athletes page). Athletes open the site, choose **Join team**, and enter the code.
+   - Add athletes one of two ways:
+     - **You sign them up** (Athletes → Add): they get an email with their login details. See "Emailing login details" below.
+     - **They join themselves:** share your **team code** (shown on the Athletes page). They open the site, choose **Join team**, and enter it.
+   - **Train on your own program:** on the Athletes page, tap **Add myself**. You can then switch between coach and athlete views from the Athletes page or your Profile, without signing out.
 4. **Profile → Change password** at any time.
 5. **Turn on notifications** on each phone or computer: tap the 🔔 bell → settings icon → **Turn on notifications**.
    - **iPhone:** add the app to the home screen first (step 2), open it from there, then turn notifications on. This is an Apple rule (iOS 16.4 or later).
    - You can choose which alerts you get. As the coach you can be told about completed sessions, form checks, messages, check-ins, injuries, tests, bodyweight/body fat entries and rule flags. Athletes get session summaries, coach feedback, new programs or protocols, and a daily check-in reminder at a time they choose.
+
+---
+
+## Emailing login details to athletes
+
+When you add an athlete (**Training → Athletes → Add**), the app creates a temporary password and emails it to them, with a link to the app. They choose their own password the first time they sign in. If you need to send new details later (for example, they forgot their password), use the athlete's **Settings → Send new login details** button.
+
+The app needs an email account to send from. Until you set one up, it shows you the login details with **Copy** and **Share** buttons instead, so you can text or WhatsApp them.
+
+**Easiest setup: a Gmail account** (your own or a dedicated one, e.g. `adrugbycoaching@gmail.com`)
+
+1. Turn on **2-Step Verification** for that Google account.
+2. Go to **myaccount.google.com/apppasswords** and create an app password called "AD Rugby app". Copy the 16-character password it shows.
+3. In Render, open the service → **Environment** → **Add environment variable**, and add:
+
+   | Key | Value |
+   | --- | --- |
+   | `SMTP_HOST` | `smtp.gmail.com` |
+   | `SMTP_PORT` | `465` |
+   | `SMTP_USER` | your Gmail address |
+   | `SMTP_PASS` | the 16-character app password |
+   | `MAIL_FROM` | `AD Rugby Coaching <your Gmail address>` |
+
+4. Save. Render restarts the app, and new athletes will get an email.
+
+Any other email provider that gives you SMTP details works the same way (Outlook/Microsoft 365, Zoho, Brevo, Resend, SendGrid…). If you set up your own web address later, a provider like Resend or Brevo lets the emails come from that domain.
 
 ---
 

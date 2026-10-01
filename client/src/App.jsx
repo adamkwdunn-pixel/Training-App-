@@ -26,6 +26,8 @@ import { MyCheckIn, MyInjuries, MyProtocols, ProtocolLibrary, RecoverySquad } fr
 import { MyTesting, TestingSquad } from './pages/TestingPages.jsx';
 import Notifications from './pages/Notifications.jsx';
 import NotificationSettings from './pages/NotificationSettings.jsx';
+import CoachOnly from './pages/CoachOnly.jsx';
+import SetPassword from './pages/SetPassword.jsx';
 import { applyUpdate, useLive } from './live.js';
 
 const AuthContext = createContext(null);
@@ -87,6 +89,7 @@ export default function App() {
   const banner = live.updateReady && <UpdateBanner />;
   if (me === undefined) return <div className="splash">Loading…</div>;
   if (!me) return <AuthContext.Provider value={auth}>{banner}<Login /></AuthContext.Provider>;
+  if (me.user.must_change_password) return <AuthContext.Provider value={auth}><SetPassword onDone={refresh} /></AuthContext.Provider>;
 
   const isCoach = me.user.role === 'coach';
   return (
@@ -126,6 +129,8 @@ export default function App() {
               <Route path="/recovery/injuries" element={<MyInjuries />} />
               <Route path="/recovery/protocols" element={<MyProtocols />} />
               <Route path="/testing" element={<MyTesting />} />
+              <Route path="/coach/*" element={<CoachOnly />} />
+              <Route path="/coach" element={<CoachOnly />} />
             </>
           )}
           <Route path="/videos" element={<Videos />} />

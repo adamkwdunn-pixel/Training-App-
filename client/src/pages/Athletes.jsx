@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api.js';
+import { useAuth } from '../App.jsx';
+import LoginDetails from '../components/LoginDetails.jsx';
 import { fmtDate, useApi } from '../util.js';
 import { Badge, Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
@@ -8,7 +10,9 @@ import Icon from '../components/Icon.jsx';
 export default function Athletes() {
   const { data, error, reload } = useApi('/athletes');
   const [adding, setAdding] = useState(false);
-  const [f, setF] = useState({ name: '', email: '', password: '', position: '' });
+  const [f, setF] = useState({ name: '', email: '', position: '' });
+  const [created, setCreated] = useState(null);
+  const { signIn } = useAuth();
   const [err, setErr] = useState('');
   const [filter, setFilter] = useState('');
   const [code, setCode] = useState(null);
@@ -17,8 +21,9 @@ export default function Athletes() {
     e.preventDefault();
     setErr('');
     try {
-      await api('/athletes', { method: 'POST', body: f });
-      setF({ name: '', email: '', password: '', position: '' });
+      const out = await api('/athletes', { method: 'POST', body: f });
+      setCreated({ ...out, name: f.name });
+      setF({ name: '', email: '', position: '' });
       setAdding(false);
       reload();
     } catch (e2) {
@@ -28,6 +33,15 @@ export default function Athletes() {
   const newCode = async () => {
     if (!confirm('Make a new team code? The old one will stop working for new sign-ups.')) return;
     setCode((await api('/me/invite-code', { method: 'POST' })).invite_code);
+  };
+
+  const addMe = async () => {
+    await api('/me/athlete-profile', { method: 'POST' });
+    reload();
+  };
+  const switchToMe = async () => {
+    const out = await api('/me/switch', { method: 'POST' });
+    signIn(out.token, out.user);
   };
 
   if (!data) return <Loading error={error} />;
@@ -54,12 +68,27 @@ export default function Athletes() {
             <label>Name<input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
             <label>Position<input value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} placeholder="e.g. Tighthead prop" /></label>
             <label>Email<input required type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
-            <label>Temporary password<input required minLength={8} value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /></label>
           </div>
+          <p className="small muted" style={{ margin: 0 }}>
+            A temporary password is created for them{data.email_configured ? ' and emailed with a link to the app' : ''}. They choose their own the first time they sign in.
+          </p>
           {err && <p className="error">{err}</p>}
           <button className="btn primary">Add athlete</button>
         </form>
       )}
+
+      {created && <LoginDetails details={created} onClose={() => setCreated(null)} />}
+
+      <div className="card flat row" style={{ border: '1px solid var(--line)', marginBottom: 14 }}>
+        <Icon name="user" />
+        <div className="grow">
+          <strong>{data.has_athlete_profile ? 'Your athlete profile' : 'Train on your own program'}</strong>
+          <div className="small muted">{data.has_athlete_profile ? 'Log your own sessions, check-ins and tests, then switch back.' : 'Add yourself as an athlete in your squad to try everything first-hand.'}</div>
+        </div>
+        {data.has_athlete_profile
+          ? <button className="btn small primary" onClick={switchToMe}>Switch to athlete view</button>
+          : <button className="btn small" onClick={addMe}><Icon name="plus" size={16} /> Add myself</button>}
+      </div>
 
       {data.athletes.length > 6 && <input className="search" placeholder="Search athletes…" value={filter} onChange={(e) => setFilter(e.target.value)} />}
       {data.athletes.length === 0 && <Empty>No athletes yet. Share your team code or add them above.</Empty>}
@@ -68,7 +97,7 @@ export default function Athletes() {
           <Link key={a.id} to={`/athletes/${a.id}`} className="row">
             <div className="avatar">{a.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}</div>
             <div className="grow">
-              <strong>{a.name}</strong> {a.position && <span className="muted small">· {a.position}</span>}
+              <strong>{a.name}</strong>{a.is_me && <span className="badge solid" style={{ marginLeft: 6 }}>You</span>} {a.position && <span className="muted small">· {a.position}</span>}
               <div className="muted small">
                 {a.program || 'No program'} · last session {fmtDate(a.last_session)} · {a.sessions_7d} this week
               </div>

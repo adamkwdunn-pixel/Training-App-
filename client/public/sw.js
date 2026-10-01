@@ -1,8 +1,8 @@
 // Service worker: offline app shell, push notifications, and opening the right screen when one is tapped.
-const CACHE = 'training-shell-v3';
+const CACHE = 'training-shell-v4';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icon.svg'])));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/logo.png', '/logo-mark.png'])));
   self.skipWaiting();
 });
 
@@ -39,9 +39,9 @@ self.addEventListener('push', (e) => {
   try {
     data = e.data ? e.data.json() : {};
   } catch {
-    data = { title: 'Squad Training', body: e.data?.text() };
+    data = { title: 'AD Rugby Coaching', body: e.data?.text() };
   }
-  const shown = self.registration.showNotification(data.title || 'Squad Training', {
+  const shown = self.registration.showNotification(data.title || 'AD Rugby Coaching', {
     body: data.body || '',
     icon: '/icon-192.png',
     badge: '/badge-96.png',

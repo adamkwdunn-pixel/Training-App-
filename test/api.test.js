@@ -41,7 +41,7 @@ test('coach builds a program, athlete trains, rules progress the load, feedback 
   const squat = exercises.find((e) => e.name === 'Back Squat');
   const sprint = exercises.find((e) => e.name === '30 m Sprint');
   const { rules } = (await call('GET', '/rules', coach)).data;
-  const rir = rules.find((r) => r.name === 'RIR-guided double progression');
+  const rir = rules.find((r) => r.name === 'RIR-guided progression');
 
   // Program: 2 weeks x 1 session.
   const p = (await call('POST', '/programs', coach, { name: 'Pre-season', weeks: 2, days_per_week: 1 })).data.program;

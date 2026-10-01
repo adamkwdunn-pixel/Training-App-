@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
-import { CATEGORIES, LOAD_TYPES, describeRx, useApi } from '../util.js';
+import { CATEGORIES, LOAD_TYPES, METRIC_LABELS, describeRx, useApi } from '../util.js';
 import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 
@@ -29,7 +29,7 @@ export default function DayEditor() {
   const { id, dayId } = useParams();
   const nav = useNavigate();
   const { data, error } = useApi(`/programs/${id}`);
-  const { data: exData } = useApi('/exercises');
+  const { data: exData, reload: reloadExercises } = useApi('/exercises');
   const { data: ruleData } = useApi('/rules');
   const [day, setDay] = useState(null);
   const [dirty, setDirty] = useState(false);
@@ -37,14 +37,29 @@ export default function DayEditor() {
   const [open, setOpen] = useState(null);
   const [adding, setAdding] = useState('');
 
+  const [restored, setRestored] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const draftKey = `day-draft-${dayId}`;
+
   const program = data?.program;
   const source = program?.days.find((d) => String(d.id) === dayId);
   useEffect(() => {
-    if (source) {
+    if (!source) return;
+    // Unsaved edits survive leaving the page (e.g. to the exercise library) and coming back.
+    const draft = readDraft(draftKey);
+    if (draft) {
+      setDay(draft);
+      setDirty(true);
+      setRestored(true);
+    } else {
       setDay({ ...source, prescriptions: source.prescriptions.map((r) => ({ ...r, key: String(r.id) })) });
       setDirty(false);
     }
   }, [source?.id, data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (day && dirty) writeDraft(draftKey, day);
+  }, [day, dirty, draftKey]);
 
   // Warn before leaving with unsaved edits.
   useEffect(() => {
@@ -64,6 +79,13 @@ export default function DayEditor() {
     setDirty(true);
     setStatus('');
   };
+  const discard = () => {
+    if (!confirm('Throw away your unsaved changes to this session?')) return;
+    writeDraft(draftKey, null);
+    setDay({ ...source, prescriptions: source.prescriptions.map((r) => ({ ...r, key: String(r.id) })) });
+    setDirty(false);
+    setRestored(false);
+  };
   const setRx = (i, patch) => change({ prescriptions: day.prescriptions.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
   const move = (i, dir) => {
     const list = [...day.prescriptions];
@@ -73,8 +95,8 @@ export default function DayEditor() {
     change({ prescriptions: list });
   };
   const remove = (i) => change({ prescriptions: day.prescriptions.filter((_, j) => j !== i) });
-  const add = (exId) => {
-    const ex = exById[exId];
+  const add = (exId, created) => {
+    const ex = created || exById[exId];
     if (!ex) return;
     const rx = { ...blankRx(ex), exercise_name: ex.name };
     change({ prescriptions: [...day.prescriptions, rx] });
@@ -86,6 +108,8 @@ export default function DayEditor() {
     setStatus('Saving…');
     try {
       await api(`/days/${day.id}`, { method: 'PUT', body: day });
+      writeDraft(draftKey, null);
+      setRestored(false);
       setDirty(false);
       setStatus('Saved ✓');
     } catch (e) {
@@ -107,6 +131,11 @@ export default function DayEditor() {
         {idx < ordered.length - 1 && <button className="btn ghost small" onClick={() => go(ordered[idx + 1])}>Next →</button>}
       </PageHeader>
 
+      {restored && (
+        <div className="card flat small" style={{ borderColor: 'var(--warn)' }}>
+          Restored your unsaved changes from earlier. Press <strong>Save session</strong> to keep them, or <button type="button" className="btn small ghost" onClick={discard}>discard</button>.
+        </div>
+      )}
       <div className="card stack">
         <label>Session title<input value={day.title || ''} onChange={(e) => change({ title: e.target.value })} placeholder="e.g. Lower strength + acceleration" /></label>
         <label>Session notes<textarea rows={2} value={day.notes || ''} onChange={(e) => change({ notes: e.target.value })} placeholder="Warm-up, focus, anything the athlete should know" /></label>
@@ -129,7 +158,7 @@ export default function DayEditor() {
                   <button className="icon-btn" onClick={() => remove(i)} aria-label="Remove"><Icon name="trash" size={16} /></button>
                 </div>
               </div>
-              {isOpen && <RxForm r={r} ex={ex} rules={ruleData?.rules || []} onChange={(patch) => setRx(i, patch)} exercises={exData?.exercises || []} />}
+              {isOpen && <RxForm r={r} ex={ex} rules={ruleData?.rules || []} defaultRule={ruleData?.rules.find((x) => x.id === program.rule_id)} onChange={(patch) => setRx(i, patch)} exercises={exData?.exercises || []} />}
             </div>
           );
         })}
@@ -147,18 +176,24 @@ export default function DayEditor() {
             ) : null;
           })}
         </select>
-        <Link to="/coach/exercises" className="small">Manage library</Link>
+        <button type="button" className="btn small" onClick={() => setCreating(!creating)}><Icon name="plus" size={16} /> New exercise</button>
       </div>
+      {creating && (
+        <NewExercise onCreated={(ex) => { setCreating(false); reloadExercises().then(() => add(ex.id, ex)); }} onCancel={() => setCreating(false)} />
+      )}
 
       <div className="save-bar">
-        <span className="small muted">{status || (dirty ? 'Unsaved changes' : '')}</span>
+        <span className="small muted">
+          {status || (dirty ? 'Unsaved — kept on this device until you save' : 'All changes saved')}
+          {dirty && <button type="button" className="btn small ghost" onClick={discard}>Discard</button>}
+        </span>
         <button className="btn primary" onClick={save} disabled={!dirty}>Save session</button>
       </div>
     </>
   );
 }
 
-function RxForm({ r, ex, rules, onChange, exercises }) {
+function RxForm({ r, ex, rules, onChange, exercises, defaultRule }) {
   const f = (k) => ({ value: r[k] ?? '', onChange: (e) => onChange({ [k]: e.target.value }) });
   const isLoad = ex.metric === 'load';
   return (
@@ -195,22 +230,74 @@ function RxForm({ r, ex, rules, onChange, exercises }) {
       <label>Coaching notes<input {...f('notes')} placeholder="Cues, intent, variations" /></label>
       <div className="grid2">
         <label>
-          Progression for this exercise
-          <select {...f('progression')}>
-            <option value="inherit">Use the athlete’s program rule</option>
-            <option value="rule">Use a specific rule</option>
-            <option value="none">No auto-progression</option>
+          Progression model
+          <select
+            value={r.progression === 'rule' && r.rule_id ? String(r.rule_id) : r.progression === 'none' ? 'none' : 'inherit'}
+            onChange={(e) => {
+              const v = e.target.value;
+              onChange(v === 'inherit' || v === 'none' ? { progression: v, rule_id: '' } : { progression: 'rule', rule_id: Number(v) });
+            }}
+          >
+            <option value="inherit">Program default{defaultRule ? ` — ${defaultRule.name}` : ''}</option>
+            {rules.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            <option value="none">None — keep loads as written</option>
           </select>
         </label>
-        {r.progression === 'rule' && (
-          <label>
-            Rule
-            <select {...f('rule_id')}>
-              <option value="">Choose…</option>
-              {rules.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </select>
-          </label>
-        )}
+      </div>
+    </div>
+  );
+}
+
+function readDraft(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || 'null');
+  } catch {
+    return null;
+  }
+}
+function writeDraft(key, value) {
+  try {
+    if (value) localStorage.setItem(key, JSON.stringify(value));
+    else localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Create an exercise without leaving the session editor. */
+function NewExercise({ onCreated, onCancel }) {
+  const [f, setF] = useState({ name: '', category: 'strength', metric: 'load', cues: '' });
+  const [err, setErr] = useState('');
+  const submit = async () => {
+    setErr('');
+    try {
+      const { exercise } = await api('/exercises', { method: 'POST', body: f });
+      onCreated(exercise);
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  return (
+    <div className="card stack">
+      <h3>New exercise</h3>
+      <div className="grid3">
+        <label>Name<input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), submit())} /></label>
+        <label>
+          Category
+          <select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+        </label>
+        <label>
+          Athletes record
+          <select value={f.metric} onChange={(e) => setF({ ...f, metric: e.target.value })}>
+            {Object.entries(METRIC_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </label>
+      </div>
+      <label>Coaching cues<input value={f.cues} onChange={(e) => setF({ ...f, cues: e.target.value })} placeholder="Optional" /></label>
+      {err && <p className="error">{err}</p>}
+      <div className="row-actions" style={{ marginTop: 0 }}>
+        <button type="button" className="btn primary" disabled={!f.name.trim()} onClick={submit}>Create &amp; add to session</button>
+        <button type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import { registerTesting, ensureMainLifts } from './routes/testing.js';
 import { registerNutrition } from './routes/nutrition.js';
 import { registerRecovery, seedProtocols } from './routes/recovery.js';
 import { createNotifier, registerNotifications, webPushSender } from './notify.js';
+import { createMailer, loginEmail, tempPassword } from './mail.js';
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -31,9 +32,10 @@ const CATEGORIES = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'o
 const EXERCISE_METRICS = ['load', 'time', 'distance', 'height', 'reps', 'velocity'];
 const COMMENT_TYPES = ['general', 'workout', 'video', 'injury'];
 
-export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev' } = {}) {
+export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev', mailer = createMailer() } = {}) {
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy', 1); // behind Render's proxy: lets req.protocol report https
   app.use(express.json({ limit: '2mb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   // The web app compares this with its own build id and offers a refresh when they differ.
@@ -131,12 +133,40 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     if (b.new_password) {
       if (!verifyPassword(String(b.current_password || ''), u.password_hash)) fail(400, 'Current password is wrong');
       if (String(b.new_password).length < 8) fail(400, 'Password must be at least 8 characters');
-      q('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(String(b.new_password)), u.id);
+      q('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(hashPassword(String(b.new_password)), u.id);
     }
     q('UPDATE users SET name = COALESCE(?, name), position = ?, bodyweight = ? WHERE id = ?').run(
       str(b.name), str(b.position ?? u.position), num(b.bodyweight ?? u.bodyweight), u.id,
     );
     res.json({ user: publicUser(q('SELECT * FROM users WHERE id = ?').get(u.id)) });
+  });
+
+  // ---------- coach ⇄ own athlete profile ----------
+  // The coach can train too: a separate athlete account in their own squad, linked both ways,
+  // so they can flip between views without logging out.
+  app.post('/api/me/athlete-profile', (req, res) => {
+    const coach = requireCoach(req);
+    if (coach.linked_user_id && q('SELECT 1 FROM users WHERE id = ?').get(coach.linked_user_id)) fail(409, 'You already have an athlete profile');
+    const [local, domain] = String(coach.email).split('@');
+    let email = `${local}+athlete@${domain}`;
+    for (let n = 2; q('SELECT 1 FROM users WHERE email = ?').get(email); n++) email = `${local}+athlete${n}@${domain}`;
+    const id = tx(db, () => {
+      const athleteId = Number(q(`INSERT INTO users (name, email, password_hash, role, coach_id, linked_user_id, sex, birth_date, height_cm, bodyweight)
+        VALUES (?, ?, ?, 'athlete', ?, ?, ?, ?, ?, ?)`).run(
+        coach.name, email, hashPassword(crypto.randomBytes(24).toString('base64url')), coach.id, coach.id,
+        coach.sex, coach.birth_date, coach.height_cm, coach.bodyweight,
+      ).lastInsertRowid);
+      q('UPDATE users SET linked_user_id = ? WHERE id = ?').run(athleteId, coach.id);
+      return athleteId;
+    });
+    res.status(201).json({ id, email });
+  });
+
+  app.post('/api/me/switch', (req, res) => {
+    const u = requireUser(req);
+    const other = u.linked_user_id ? q('SELECT * FROM users WHERE id = ?').get(u.linked_user_id) : null;
+    if (!other || other.linked_user_id !== u.id) fail(404, 'No linked profile to switch to');
+    res.json({ token: issueToken(db, other.id), user: publicUser(other) });
   });
 
   app.post('/api/me/invite-code', (req, res) => {
@@ -160,19 +190,51 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
         (SELECT p.name FROM assignments a JOIN programs p ON p.id = a.program_id
            WHERE a.athlete_id = u.id AND a.active = 1 ORDER BY a.start_date DESC LIMIT 1) AS program
       FROM users u WHERE u.coach_id = ? AND u.role = 'athlete' ORDER BY u.name`).all(u.id);
-    res.json({ athletes: rows, invite_code: u.invite_code });
+    for (const r of rows) r.is_me = r.id === u.linked_user_id;
+    res.json({ athletes: rows, invite_code: u.invite_code, has_athlete_profile: rows.some((r) => r.is_me), email_configured: mailer.configured });
   });
 
-  app.post('/api/athletes', (req, res) => {
+  const appUrl = (req) => (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+
+  /** Email an athlete their login details. Never throws: the coach always gets the details back to share by hand. */
+  async function sendLogin(req, coach, athlete, password, reset) {
+    const login = { url: appUrl(req), email: athlete.email, password };
+    if (!mailer.configured) return { login, email_sent: false, email_error: 'Email isn’t set up on the server yet — share these details yourself.' };
+    try {
+      const m = loginEmail({ athleteName: athlete.name, coachName: coach.name, ...login, reset });
+      await mailer.send({ to: athlete.email, replyTo: coach.email, ...m });
+      return { login, email_sent: true };
+    } catch (e) {
+      console.warn('Login email failed:', e.message);
+      return { login, email_sent: false, email_error: `The email couldn’t be sent (${e.message}). Share these details yourself.` };
+    }
+  }
+
+  app.post('/api/athletes', async (req, res) => {
     const coach = requireCoach(req);
-    const { name, email, password, position } = req.body || {};
-    if (!name || !email || !password) fail(400, 'Name, email and a temporary password are required');
-    if (String(password).length < 8) fail(400, 'Password must be at least 8 characters');
-    if (q('SELECT 1 FROM users WHERE email = ?').get(email)) fail(409, 'That email is already registered');
-    const info = q("INSERT INTO users (name, email, password_hash, role, coach_id, position) VALUES (?, ?, ?, 'athlete', ?, ?)").run(
-      String(name).trim(), String(email).trim(), hashPassword(String(password)), coach.id, str(position),
+    const { name, email, position } = req.body || {};
+    if (!name || !email) fail(400, 'Name and email are required');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) fail(400, 'That doesn’t look like an email address');
+    if (q('SELECT 1 FROM users WHERE email = ?').get(String(email).trim())) fail(409, 'That email is already registered');
+    const password = req.body.password ? String(req.body.password) : tempPassword(crypto.randomBytes);
+    if (password.length < 8) fail(400, 'Password must be at least 8 characters');
+    const info = q("INSERT INTO users (name, email, password_hash, role, coach_id, position, must_change_password) VALUES (?, ?, ?, 'athlete', ?, ?, 1)").run(
+      String(name).trim(), String(email).trim(), hashPassword(password), coach.id, str(position),
     );
-    res.status(201).json({ id: Number(info.lastInsertRowid) });
+    const athlete = q('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+    const sent = req.body.send_email === false ? { login: { url: appUrl(req), email: athlete.email, password }, email_sent: false } : await sendLogin(req, coach, athlete, password, false);
+    res.status(201).json({ id: athlete.id, ...sent });
+  });
+
+  // Reset an athlete's password to a new temporary one and send it to them.
+  app.post('/api/athletes/:id/send-login', async (req, res) => {
+    const coach = requireCoach(req);
+    const a = athleteFor(req, req.params.id);
+    if (a.linked_user_id === coach.id) fail(400, 'That’s your own athlete profile — use “Switch to athlete view” instead');
+    const password = tempPassword(crypto.randomBytes);
+    q('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(hashPassword(password), a.id);
+    q('DELETE FROM auth_tokens WHERE user_id = ?').run(a.id); // signs them out everywhere
+    res.json(await sendLogin(req, coach, a, password, true));
   });
 
   app.get('/api/athletes/:id', (req, res) => {
@@ -295,6 +357,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   app.get('/api/rules/meta', (_req, res) => res.json({ metrics: METRICS, ops: OPS, actions: ACTIONS, presets: PRESET_RULES }));
   app.get('/api/rules', (req, res) => {
     const coach = requireCoach(req);
+    ensureRulePresets(db, coach.id);
     const rules = q('SELECT * FROM progression_rules WHERE coach_id = ? ORDER BY name').all(coach.id);
     res.json({ rules: rules.map((r) => ({ ...r, config: JSON.parse(r.config) })) });
   });
@@ -375,7 +438,11 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   app.put('/api/programs/:id', (req, res) => {
     const p = programForCoach(req, req.params.id);
     const b = req.body || {};
-    q('UPDATE programs SET name = COALESCE(?, name), description = ?, weeks = COALESCE(?, weeks) WHERE id = ?').run(str(b.name), str(b.description ?? p.description), num(b.weeks), p.id);
+    const ruleId = b.rule_id === undefined ? p.rule_id : num(b.rule_id);
+    if (ruleId) ownedBy('progression_rules', ruleId, p.coach_id, 'Rule');
+    q('UPDATE programs SET name = COALESCE(?, name), description = ?, weeks = COALESCE(?, weeks), rule_id = ? WHERE id = ?').run(
+      str(b.name), str(b.description ?? p.description), num(b.weeks), ruleId, p.id,
+    );
     res.json({ program: loadProgram(p.id) });
   });
 
@@ -403,6 +470,33 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       return pid;
     });
     res.status(201).json({ program: loadProgram(id) });
+  });
+
+  // Duplicate a week: the copy goes straight after it and later weeks move down one.
+  app.post('/api/programs/:id/weeks/:week/duplicate', (req, res) => {
+    const p = programForCoach(req, req.params.id);
+    const w = num(req.params.week);
+    if (!w || w > Math.max(p.weeks, 1)) fail(400, 'No such week');
+    tx(db, () => {
+      q('UPDATE program_days SET week = week + 1 WHERE program_id = ? AND week > ?').run(p.id, w);
+      for (const d of q('SELECT * FROM program_days WHERE program_id = ? AND week = ? ORDER BY day, id').all(p.id, w)) copyDay(d, p.id, w + 1, d.day);
+      q('UPDATE programs SET weeks = weeks + 1 WHERE id = ?').run(p.id);
+    });
+    res.json({ program: loadProgram(p.id) });
+  });
+
+  // Remove a week and its sessions; later weeks move up one. Logged sessions are kept.
+  app.delete('/api/programs/:id/weeks/:week', (req, res) => {
+    const p = programForCoach(req, req.params.id);
+    const w = num(req.params.week);
+    if (!w || w > p.weeks) fail(400, 'No such week');
+    if (p.weeks <= 1) fail(400, 'A program needs at least one week');
+    tx(db, () => {
+      q('DELETE FROM program_days WHERE program_id = ? AND week = ?').run(p.id, w);
+      q('UPDATE program_days SET week = week - 1 WHERE program_id = ? AND week > ?').run(p.id, w);
+      q('UPDATE programs SET weeks = weeks - 1 WHERE id = ?').run(p.id);
+    });
+    res.json({ program: loadProgram(p.id) });
   });
 
   // Copy every session in one week to another week (replacing what's there).
@@ -611,6 +705,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       }
     }
     const coachId = athlete.coach_id;
+    const programRule = assignment ? q('SELECT rule_id FROM programs WHERE id = ?').get(assignment.program_id)?.rule_id ?? null : null;
 
     const result = tx(db, () => {
       const logId = Number(q(`INSERT INTO workout_logs (athlete_id, assignment_id, day_id, title, performed_on, session_rpe, notes)
@@ -646,7 +741,8 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
 
         let ruleId = null;
         if (g.rx?.progression === 'rule') ruleId = g.rx.rule_id;
-        else if (g.rx?.progression !== 'none' && g.rx) ruleId = assignment?.rule_id;
+        // Order of precedence: exercise override → athlete's assignment → program default.
+        else if (g.rx?.progression !== 'none' && g.rx) ruleId = assignment?.rule_id ?? programRule;
         const rule = ruleId ? q('SELECT * FROM progression_rules WHERE id = ?').get(ruleId) : null;
 
         if (rule) {
@@ -969,6 +1065,26 @@ export function seedCoachDefaults(db, coachId) {
   for (const [name, cat, metric, cues] of starter) ex.run(coachId, name, cat, metric, cues);
   const rule = db.prepare('INSERT INTO progression_rules (coach_id, name, description, config) VALUES (?, ?, ?, ?)');
   for (const r of PRESET_RULES) rule.run(coachId, r.name, r.description, JSON.stringify(r.config));
+  db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(`rule_presets:${coachId}`, String(PRESETS_VERSION));
   ensureMainLifts(db, coachId);
   seedProtocols(db, coachId);
+}
+
+// Bump when PRESET_RULES gains a model, so existing coaches get it once (without restoring ones they deleted).
+const PRESETS_VERSION = 2;
+const ADDED_IN = { 2: ['Double progression (rep range)'] };
+
+export function ensureRulePresets(db, coachId) {
+  const key = `rule_presets:${coachId}`;
+  const have = Number(db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key)?.value || 1);
+  if (have >= PRESETS_VERSION) return;
+  const exists = db.prepare('SELECT 1 FROM progression_rules WHERE coach_id = ? AND name = ?');
+  const ins = db.prepare('INSERT INTO progression_rules (coach_id, name, description, config) VALUES (?, ?, ?, ?)');
+  for (let v = have + 1; v <= PRESETS_VERSION; v++) {
+    for (const name of ADDED_IN[v] || []) {
+      const r = PRESET_RULES.find((x) => x.name === name);
+      if (r && !exists.get(coachId, name)) ins.run(coachId, r.name, r.description, JSON.stringify(r.config));
+    }
+  }
+  db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(key, String(PRESETS_VERSION));
 }

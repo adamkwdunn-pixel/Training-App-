@@ -341,9 +341,11 @@ export function openDb(file = process.env.DB_FILE || path.join(DATA_DIR, 'traini
 // Bring databases created by earlier versions up to date.
 function migrate(db) {
   const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
-  for (const [col, type] of [['sex', 'TEXT'], ['birth_date', 'TEXT'], ['height_cm', 'REAL']]) {
+  for (const [col, type] of [['sex', 'TEXT'], ['birth_date', 'TEXT'], ['height_cm', 'REAL'], ['must_change_password', 'INTEGER NOT NULL DEFAULT 0'], ['linked_user_id', 'INTEGER']]) {
     if (!cols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
   }
+  // Programs gained a default progression rule.
+  if (!db.prepare('PRAGMA table_info(programs)').all().some((c) => c.name === 'rule_id')) db.exec('ALTER TABLE programs ADD COLUMN rule_id INTEGER');
   const np = new Set(db.prepare('PRAGMA table_info(nutrition_profiles)').all().map((c) => c.name));
   for (const [col, def] of [['bmr_equation', "TEXT NOT NULL DEFAULT 'mifflin'"], ['macro_mode', "TEXT NOT NULL DEFAULT 'per_kg'"],
     ['fat_g_per_kg', 'REAL NOT NULL DEFAULT 1.0'], ['protein_pct', 'REAL NOT NULL DEFAULT 30']]) {

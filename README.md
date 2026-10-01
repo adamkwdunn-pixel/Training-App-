@@ -1,4 +1,4 @@
-# Squad Training
+# AD Rugby Coaching
 
 A coaching app for rugby and strength & conditioning, split into four sections: **Training, Nutrition, Recovery and Testing**. Coaches build programs, set their own progression rules, and see every athlete's training, intake, readiness, injuries and test results. Athletes use it on their phone; the coach can work from a phone or PC.
 
@@ -8,8 +8,18 @@ It's a **web app you can install** (a PWA). Open the site on a phone, then "Add 
 
 The app is split into four sections, each with its own tab: **Training, Nutrition, Recovery, Testing**. For the coach, Training also holds the inbox and athlete list. Every athlete page has tabs for all four sections, so you can see one athlete's full picture in one place.
 
+### Coach tools
+- **Program builder:**
+  - Add or remove weeks with a **− / +** stepper.
+  - **Duplicate** a week (the copy is inserted right after it) or remove it.
+  - Copy a week over another, and duplicate individual sessions.
+  - Pick the program's **progression model** from a dropdown (double progression, linear, RIR-guided, % block…). Override it per athlete or per exercise from the same list.
+- **Never lose work:** unsaved session edits are kept on the device. You can create a new exercise without leaving the session.
+- **Sign athletes up:** the app generates a temporary password and emails the athlete their login details. They set their own password on first sign-in. You can resend or reset login details at any time.
+- **Train yourself:** add yourself as an athlete in your own squad and switch between coach and athlete views without signing out.
+
 ### Coach tab (coach accounts only)
-The Coach tab is where you **create and edit programs**, and manage your progression rules, exercise library, and recovery protocols. Athletes never see it, and the server refuses those requests from athlete accounts even if someone types the address directly. If you add another coach (see `COACH_SIGNUP_KEY`), each coach only sees their own programs and athletes.
+The Coach tab is where you **create and edit programs**, and manage your progression rules, exercise library, and recovery protocols. Anyone else who opens it sees a **For coaches only** page, and the server refuses those requests from athlete accounts. If you add another coach (see `COACH_SIGNUP_KEY`), each coach only sees their own programs and athletes.
 
 ### Training
 - **Programs:** weeks → sessions → exercises. Loads can be set as **% of max**, **RIR** (load worked out from the athlete's max using the RPE/RIR chart), **RPE**, **fixed kg**, **bodyweight** or **no load**. Speed, power and conditioning work uses numeric targets (e.g. 10 m in 1.85 s).
@@ -96,6 +106,8 @@ Any host that runs Node or Docker and gives you a **persistent disk** works, for
 | `DATA_DIR` | `./data` | SQLite database + uploaded videos |
 | `MAX_UPLOAD_MB` | `300` | Max video size |
 | `COACH_SIGNUP_KEY` | *(unset)* | Lets extra coaches register; without it only the first coach can |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` (or `SMTP_URL`) | *(unset)* | Sends athletes their login details by email. Without it, the coach copies/shares them instead |
+| `APP_URL` | *(this site's address)* | The link put in emails, if it should differ from the address the coach is using |
 | `SEED_DEMO` | *(unset)* | `true` loads the demo squad the first time the server starts on an empty database |
 | `DEMO_COACH_NAME` / `DEMO_COACH_EMAIL` / `DEMO_COACH_PASSWORD` | `Adam` / `coach@demo.app` / `password123` | The coach account the demo creates |
 
@@ -115,6 +127,7 @@ shared/
   nutrition.js        energy equations, macros, bodyweight trend — used by server and app
   bodyfat.js          US Navy, Jackson-Pollock 3/7-site, Siri
 server/notify.js      notification inbox, Web Push, daily check-in reminders
+server/mail.js        login-details emails (SMTP)
   seed.js             demo data
 client/src/
   pages/              coach + athlete screens

@@ -80,6 +80,8 @@ export function createNotifier(db, sendPush) {
 
   function notify(userId, { type, title, body = null, link = null, actorId = null }) {
     if (!userId || userId === actorId) return;
+    // The coach training on their own linked athlete profile doesn't need to hear about it.
+    if (actorId && db.prepare('SELECT linked_user_id FROM users WHERE id = ?').get(actorId)?.linked_user_id === userId) return;
     if (prefsOf(db, userId).muted.includes(type)) return;
     const id = Number(insert.run(userId, actorId, type, title, body, link).lastInsertRowid);
     push(userId, { id, title, body, url: link || '/', tag: `${type}-${id}`, badge: unread.get(userId).n });

@@ -92,7 +92,7 @@ export default function NotificationSettings() {
         {status === 'denied' && (
           <p className="small muted" style={{ margin: 0 }}>
             {isIOS()
-              ? 'Open the iPhone Settings app → Notifications → Squad Training → Allow Notifications.'
+              ? 'Open the iPhone Settings app → Notifications → AD Rugby → Allow Notifications.'
               : 'Click the padlock / site settings icon next to the address bar and allow Notifications, then reload.'}
           </p>
         )}

@@ -517,3 +517,25 @@ tr.clickable:hover td { background: var(--hover); }
   cursor: pointer; box-shadow: 0 10px 40px rgb(0 0 0 / 0.6); text-align: left;
 }
 .update-btn { background: #000; color: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 0.85rem; flex: none; }
+
+/* ---------- logo ---------- */
+.brand-mark-img { height: 26px; width: auto; display: block; }
+.brand-lockup { display: block; width: min(240px, 70%); height: auto; margin: 4px auto 6px; }
+.sidebar .brand-mark-img { height: 30px; }
+
+/* ---------- program builder ---------- */
+.program-bar { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.program-bar label { min-width: 220px; }
+.stepper-wrap { display: flex; flex-direction: column; gap: 6px; }
+.stepper { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; height: 46px; }
+.stepper button { width: 46px; height: 44px; border: none; background: none; color: var(--text); font-size: 1.4rem; cursor: pointer; border-radius: 999px; }
+.stepper button:disabled { opacity: 0.3; cursor: default; }
+.stepper button:not(:disabled):hover { background: var(--hover); }
+.stepper strong { min-width: 34px; text-align: center; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.week-tools { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.week-head { flex-wrap: wrap; gap: 6px; }
+
+/* ---------- coach-only + view switch ---------- */
+.coach-only { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 20px; }
+.coach-only-icon { width: 72px; height: 72px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; margin-bottom: 8px; }
+.coach-only p { max-width: 340px; margin: 0 0 8px; }

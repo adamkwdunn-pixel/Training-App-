@@ -11,6 +11,7 @@ import Icon from '../components/Icon.jsx';
 import { BodyFat, Bodyweight, NutritionTargets } from '../components/Nutrition.jsx';
 import { AssignedProtocols, Injuries, ReadinessFor } from '../components/Recovery.jsx';
 import TestingView from '../components/Testing.jsx';
+import LoginDetails from '../components/LoginDetails.jsx';
 
 const TABS = ['overview', 'program', 'log', 'videos', 'progress', 'nutrition', 'recovery', 'testing', 'messages', 'settings'];
 
@@ -132,9 +133,9 @@ function ProgramTab({ athlete, assignments, reload }) {
                 <div className="muted small">From {fmtDate(asg.start_date)}</div>
               </div>
               <label className="small">
-                Progression rule
+                Progression model
                 <select value={asg.rule_id || ''} onChange={(e) => patch(asg.id, { rule_id: e.target.value || null })}>
-                  <option value="">None</option>
+                  <option value="">Program default</option>
                   {rules?.rules.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </label>
@@ -155,9 +156,9 @@ function ProgramTab({ athlete, assignments, reload }) {
             </select>
           </label>
           <label>
-            Progression rule
+            Progression model
             <select value={f.rule_id} onChange={(e) => setF({ ...f, rule_id: e.target.value })}>
-              <option value="">None</option>
+              <option value="">Program default</option>
               {rules?.rules.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </label>
@@ -241,6 +242,11 @@ function SettingsTab({ athlete, reload }) {
     setSaved(true);
     reload();
   };
+  const [loginSent, setLoginSent] = useState(null);
+  const sendLogin = async () => {
+    if (!confirm(`Create a new temporary password for ${athlete.name} and send it to ${athlete.email}? Their current password stops working.`)) return;
+    setLoginSent({ ...(await api(`/athletes/${athlete.id}/send-login`, { method: 'POST' })), name: athlete.name });
+  };
   const remove = async () => {
     if (!confirm(`Remove ${athlete.name} from your squad? Their history is kept.`)) return;
     await api(`/athletes/${athlete.id}`, { method: 'DELETE' });
@@ -265,6 +271,16 @@ function SettingsTab({ athlete, reload }) {
         <span className="grow" />
         <button type="button" className="btn danger ghost" onClick={remove}>Remove from squad</button>
       </div>
+      {!athlete.linked_user_id && (
+        <div className="stack" style={{ marginTop: 18 }}>
+          <div className="divider" />
+          <div className="inline-form wrap">
+            <div className="grow"><strong>Login details</strong><div className="small muted">{athlete.email}</div></div>
+            <button type="button" className="btn small" onClick={sendLogin}>Send new login details</button>
+          </div>
+          {loginSent && <LoginDetails details={loginSent} onClose={() => setLoginSent(null)} />}
+        </div>
+      )}
     </form>
   );
 }

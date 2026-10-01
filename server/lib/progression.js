@@ -16,6 +16,7 @@ import { estimate1RM, parseReps } from './loads.js';
 
 export const METRICS = {
   all_reps_completed: 'All prescribed sets & reps completed (1 = yes, 0 = no)',
+  top_of_range: 'Every set hit the TOP of the rep range, e.g. 12 on “8-12” (1 = yes, 0 = no)',
   reps_missed: 'Total reps missed vs prescription',
   sets_completed: 'Sets logged',
   avg_rir: 'Average RIR reported',
@@ -68,6 +69,10 @@ export function computeMetrics(rx, sets, state = {}) {
     }
   }
   const allDone = done.length >= targetSets && repsMissed === 0;
+  // Double progression: with a range like "8-12", progress only once every set reaches the top.
+  const range = String(rx.reps ?? '').match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
+  const topReps = range ? Number(range[2]) : targetReps;
+  const topHit = allDone && (!topReps || !countsReps || done.slice(0, targetSets).every((s) => Number(s.reps ?? 0) >= topReps));
 
   const rirs = done.map((s) => s.rir).filter((v) => v != null && v !== '').map(Number);
   const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
@@ -85,6 +90,7 @@ export function computeMetrics(rx, sets, state = {}) {
 
   return {
     all_reps_completed: allDone ? 1 : 0,
+    top_of_range: topHit ? 1 : 0,
     reps_missed: repsMissed,
     sets_completed: done.length,
     avg_rir: avg(rirs),
@@ -212,7 +218,18 @@ function fmt(n) {
 // Ready-made rule sets the coach can start from and edit.
 export const PRESET_RULES = [
   {
-    name: 'RIR-guided double progression',
+    name: 'Double progression (rep range)',
+    description: 'Prescribe a range like 3 × 8-12. Add load once every set reaches the top of the range; otherwise keep the load and add reps.',
+    config: {
+      clauses: [
+        { label: 'Top of range on every set', when: [{ metric: 'top_of_range', op: '==', value: 1 }], then: [{ action: 'adjust_load_kg', value: 2.5 }] },
+        { label: 'Fell short of the bottom', when: [{ metric: 'reps_missed', op: '>=', value: 3 }], then: [{ action: 'adjust_load_pct', value: -5 }] },
+      ],
+      otherwise: [{ action: 'hold' }],
+    },
+  },
+  {
+    name: 'RIR-guided progression',
     description: 'Add load when all reps are done with reps to spare; back off after a rough session.',
     config: {
       clauses: [

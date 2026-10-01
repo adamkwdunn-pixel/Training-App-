@@ -9,6 +9,7 @@ export default function ProgramEditor() {
   const { id } = useParams();
   const nav = useNavigate();
   const { data, error, setData } = useApi(`/programs/${id}`);
+  const { data: ruleData } = useApi('/rules');
   const [editingInfo, setEditingInfo] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [copy, setCopy] = useState({ from: 1, to: 2 });
@@ -36,6 +37,13 @@ export default function ProgramEditor() {
     update((await api(`/programs/${p.id}/copy-week`, { method: 'POST', body: copy })).program);
   };
   const addWeek = async () => update((await api(`/programs/${p.id}`, { method: 'PUT', body: { weeks: p.weeks + 1 } })).program);
+  const removeWeek = async (w) => {
+    const n = p.days.filter((d) => d.week === w).length;
+    if (n && !confirm(`Remove week ${w} and its ${n} session${n === 1 ? '' : 's'}? Later weeks move up. Logged sessions are kept.`)) return;
+    update((await api(`/programs/${p.id}/weeks/${w}`, { method: 'DELETE' })).program);
+  };
+  const dupWeek = async (w) => update((await api(`/programs/${p.id}/weeks/${w}/duplicate`, { method: 'POST', body: {} })).program);
+  const setRule = async (ruleId) => update((await api(`/programs/${p.id}`, { method: 'PUT', body: { rule_id: ruleId || null } })).program);
   const duplicate = async () => {
     const name = prompt('Name for the copy (e.g. for one athlete):', `${p.name} (copy)`);
     if (!name) return;
@@ -58,6 +66,28 @@ export default function ProgramEditor() {
       {editingInfo && <InfoForm p={p} onSaved={(prog) => { update(prog); setEditingInfo(false); }} onDuplicate={duplicate} onDelete={remove} />}
       {assigning && <AssignForm p={p} onDone={(prog) => { update(prog); setAssigning(false); }} />}
 
+      <div className="card program-bar">
+        <label className="grow">
+          Progression model
+          <select value={p.rule_id || ''} onChange={(e) => setRule(e.target.value)}>
+            <option value="">None — loads stay as written</option>
+            {ruleData?.rules.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <span className="tiny faint" style={{ fontWeight: 500 }}>
+            {ruleData?.rules.find((r) => r.id === p.rule_id)?.description || 'Applies to every exercise unless an exercise or athlete has its own.'}{' '}
+            <Link to="/coach/rules">Edit models</Link>
+          </span>
+        </label>
+        <div className="stepper-wrap">
+          <span className="stat-label">Weeks</span>
+          <div className="stepper">
+            <button type="button" onClick={() => removeWeek(p.weeks)} disabled={p.weeks <= 1} aria-label="Remove last week">−</button>
+            <strong>{p.weeks}</strong>
+            <button type="button" onClick={addWeek} aria-label="Add a week">+</button>
+          </div>
+        </div>
+      </div>
+
       {p.assignments.length > 0 && (
         <p className="small muted">
           On this program: {p.assignments.filter((a) => a.active).map((a) => (
@@ -72,7 +102,11 @@ export default function ProgramEditor() {
           <section key={w} className="week">
             <div className="week-head">
               <h2>Week {w}</h2>
-              <button className="btn small ghost" onClick={() => addDay(w)}><Icon name="plus" size={16} /> Session</button>
+              <div className="week-tools">
+                <button className="btn small ghost" onClick={() => addDay(w)}><Icon name="plus" size={16} /> Session</button>
+                <button className="btn small ghost" onClick={() => dupWeek(w)} title="Duplicate this week (inserted after it)"><Icon name="copy" size={16} /> Duplicate</button>
+                <button className="icon-btn" onClick={() => removeWeek(w)} disabled={p.weeks <= 1} aria-label={`Remove week ${w}`} title="Remove this week"><Icon name="trash" size={16} /></button>
+              </div>
             </div>
             {days.length === 0 && <p className="muted small">No sessions this week.</p>}
             <div className="day-grid">
@@ -155,9 +189,9 @@ function AssignForm({ p, onDone }) {
       </div>
       <div className="grid2">
         <label>
-          Progression rule
+          Progression model for these athletes
           <select value={f.rule_id} onChange={(e) => setF({ ...f, rule_id: e.target.value })}>
-            <option value="">None</option>
+            <option value="">Program default</option>
             {rules?.rules.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
         </label>
