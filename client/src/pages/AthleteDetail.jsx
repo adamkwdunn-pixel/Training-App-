@@ -274,6 +274,13 @@ function DetailsTab({ athlete, reload }) {
     await api(`/athletes/${athlete.id}`, { method: 'DELETE' });
     nav('/athletes');
   };
+  const purge = async () => {
+    const typed = prompt(`This permanently deletes ${athlete.name} and ALL their data — sessions, videos, messages, measurements and tests. It can’t be undone.\n\nType their name to confirm:`);
+    if (typed == null) return;
+    if (typed.trim().toLowerCase() !== athlete.name.trim().toLowerCase()) return alert('The name didn’t match, so nothing was deleted.');
+    await api(`/athletes/${athlete.id}?permanent=1`, { method: 'DELETE' });
+    nav('/athletes');
+  };
   return (
     <form className="card stack" onSubmit={save}>
       <h3>Personal details</h3>
@@ -306,7 +313,8 @@ function DetailsTab({ athlete, reload }) {
         <button className="btn primary">Save details</button>
         {msg && <span className="muted small">{msg}</span>}
         <span className="grow" />
-        <button type="button" className="btn danger ghost" onClick={remove}>Remove from squad</button>
+        {!athlete.linked_user_id && <button type="button" className="btn danger ghost" onClick={remove}>Remove from squad</button>}
+        {!athlete.linked_user_id && <button type="button" className="btn danger" onClick={purge}>Delete permanently</button>}
       </div>
       {!athlete.linked_user_id && (
         <div className="stack" style={{ marginTop: 18 }}>

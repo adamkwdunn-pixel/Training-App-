@@ -142,3 +142,34 @@ test('coach tools: login emails, own athlete profile, program rule, week control
   assert.equal(log.data.events[0].rule, 'Double progression (rep range)');
   assert.match(log.data.events[0].summary, /\+2.5 kg/);
 });
+
+test('remove demo athletes and permanently delete an athlete', async () => {
+  const c = (await call('POST', '/auth/register', null, { name: 'Coach2', email: 'c2@club.com', password: 'password1', role: 'coach' }));
+  // Second coach needs the key; use the first coach's DB via a fresh registration path instead.
+  assert.ok([201, 403].includes(c.status));
+  const login = (await call('POST', '/auth/login', null, { email: 'coach@demo.app', password: 'password1' })).data;
+  const C = login.token;
+  const code = login.user.invite_code;
+  const demo = [];
+  for (const n of ['d1', 'd2']) demo.push((await call('POST', '/auth/register', null, { name: n, email: `${n}@demo.app`, password: 'password1', invite_code: code })).data);
+  const real = (await call('POST', '/auth/register', null, { name: 'Real', email: 'real@club.com', password: 'password1', invite_code: code })).data;
+  await call('POST', `/athletes/${demo[0].user.id}/bodyweight`, demo[0].token, { weight: 90 });
+  await call('POST', '/comments', demo[0].token, { body: 'hi coach' });
+  await call('POST', `/athletes/${demo[0].user.id}/tests`, demo[0].token, { exercise_id: (await call('GET', '/exercises', C)).data.exercises[0].id, weight: 100, reps: 3 });
+
+  let list = (await call('GET', '/athletes', C)).data;
+  assert.equal(list.demo_count, 2);
+  const out = await call('POST', '/athletes/remove-demo', C, {});
+  assert.deepEqual(out.data.deleted.sort(), ['d1', 'd2']);
+  list = (await call('GET', '/athletes', C)).data;
+  assert.equal(list.demo_count, 0);
+  assert.ok(!list.athletes.some((a) => a.email.endsWith('@demo.app') && !a.is_me));
+  assert.equal((await call('POST', '/auth/login', null, { email: 'd1@demo.app', password: 'password1' })).status, 401);
+  assert.ok(list.athletes.some((a) => a.is_me)); // the coach's own profile stays
+
+  // Permanent delete vs remove-from-squad
+  assert.equal((await call('DELETE', `/athletes/${real.user.id}?permanent=1`, C)).data.deleted, true);
+  assert.equal((await call('GET', `/athletes/${real.user.id}`, C)).status, 404);
+  assert.equal((await call('POST', '/auth/login', null, { email: 'real@club.com', password: 'password1' })).status, 401);
+  assert.equal((await call('POST', '/athletes/remove-demo', real.token, {})).status, 401);
+});

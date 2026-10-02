@@ -17,6 +17,7 @@ import { registerRecovery, seedProtocols } from './routes/recovery.js';
 import { createNotifier, registerNotifications, webPushSender } from './notify.js';
 import { createMailer, loginEmail, tempPassword } from './mail.js';
 import { createFoodEstimator } from './lib/food-ai.js';
+import { createProgramImporter, IMPORT_TYPES } from './lib/program-import.js';
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -37,7 +38,7 @@ const CATEGORIES = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'o
 const EXERCISE_METRICS = ['load', 'time', 'distance', 'height', 'reps', 'velocity'];
 const COMMENT_TYPES = ['general', 'workout', 'video', 'injury'];
 
-export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev', mailer = createMailer(), estimator = createFoodEstimator() } = {}) {
+export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev', mailer = createMailer(), estimator = createFoodEstimator(), programImporter = createProgramImporter() } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // behind Render's proxy: lets req.protocol report https
@@ -136,7 +137,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     const coach = u.coach_id ? q('SELECT id, name, email FROM users WHERE id = ?').get(u.coach_id) : null;
     // Coaches get a health summary so problems with hosting show up in the app, not as lost data.
     const system = u.role === 'coach' ? {
-      version, started_at: startedAt, storage, email_configured: mailer.configured, ai_configured: !!estimator,
+      version, started_at: startedAt, storage, email_configured: mailer.configured, ai_configured: !!estimator, import_configured: !!programImporter,
       push_keys: !!q("SELECT 1 FROM app_settings WHERE key = 'vapid'").get() || !!process.env.VAPID_PUBLIC_KEY,
     } : undefined;
     res.json({ user: publicUser(u), coach, system });
@@ -206,7 +207,8 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
            WHERE a.athlete_id = u.id AND a.active = 1 ORDER BY a.start_date DESC LIMIT 1) AS program
       FROM users u WHERE u.coach_id = ? AND u.role = 'athlete' ORDER BY u.name`).all(u.id);
     for (const r of rows) r.is_me = r.id === u.linked_user_id;
-    res.json({ athletes: rows, invite_code: u.invite_code, has_athlete_profile: rows.some((r) => r.is_me), email_configured: mailer.configured });
+    const demoCount = rows.filter((r) => !r.is_me && /@demo\.app$/i.test(r.email)).length;
+    res.json({ athletes: rows, invite_code: u.invite_code, has_athlete_profile: rows.some((r) => r.is_me), email_configured: mailer.configured, demo_count: demoCount });
   });
 
   const appUrl = (req) => (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
@@ -337,14 +339,38 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     res.json({ athlete: { ...publicUser(fresh), notes: fresh.notes } });
   });
 
+  // Default: remove from the squad (account and history kept). ?permanent=1 deletes the athlete and all their data.
   app.delete('/api/athletes/:id', (req, res) => {
     requireCoach(req);
     const a = athleteFor(req, req.params.id);
-    // Removes the athlete from the squad; their account and history stay.
+    if (req.query.permanent === '1' || req.query.permanent === 'true') {
+      purgeAthlete(a);
+      return res.json({ ok: true, deleted: true });
+    }
     q('UPDATE users SET coach_id = NULL WHERE id = ?').run(a.id);
     q('UPDATE assignments SET active = 0 WHERE athlete_id = ?').run(a.id);
     res.json({ ok: true });
   });
+
+  // Delete every demo athlete (the @demo.app accounts the demo created), leaving the coach and programs.
+  app.post('/api/athletes/remove-demo', (req, res) => {
+    const coach = requireCoach(req);
+    const demo = q("SELECT * FROM users WHERE coach_id = ? AND role = 'athlete' AND email LIKE '%@demo.app' AND (linked_user_id IS NULL OR linked_user_id != ?)").all(coach.id, coach.id);
+    for (const a of demo) purgeAthlete(a);
+    res.json({ deleted: demo.map((a) => a.name) });
+  });
+
+  /** Permanently delete an athlete: account, logs, videos (and their files), messages, measurements… */
+  function purgeAthlete(a) {
+    const files = q('SELECT filename FROM videos WHERE athlete_id = ?').all(a.id);
+    tx(db, () => {
+      q('UPDATE body_measurements SET created_by = NULL WHERE created_by = ?').run(a.id);
+      q('UPDATE test_results SET created_by = NULL WHERE created_by = ?').run(a.id);
+      q('UPDATE users SET linked_user_id = NULL WHERE linked_user_id = ?').run(a.id);
+      q('DELETE FROM users WHERE id = ?').run(a.id); // everything else cascades
+    });
+    for (const f of files) fs.rm(path.join(uploadDir, path.basename(f.filename)), () => {});
+  }
 
   // Coach (or the athlete after a test) sets a max / load adjustment for an exercise.
   app.put('/api/athletes/:id/state/:exerciseId', (req, res) => {
@@ -571,6 +597,111 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       q('UPDATE programs SET weeks = weeks - 1 WHERE id = ?').run(p.id);
     });
     res.json({ program: loadProgram(p.id) });
+  });
+
+  // ---------- import a program from a PDF / photos ----------
+  const importUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+    fileFilter: (_req, file, cb) => cb(null, IMPORT_TYPES.includes(file.mimetype)),
+  });
+  const importsToday = new Map(); // `${coachId}:${date}` -> count
+
+  app.post('/api/programs/import', (req, _res, next) => next(req.user?.role === 'coach' ? undefined : new HttpError(req.user ? 403 : 401, 'Coach only')),
+    importUpload.array('files', 10), async (req, res) => {
+      const coach = requireCoach(req);
+      if (!programImporter) fail(503, 'Program import needs the AI key (ANTHROPIC_API_KEY) set in Render.');
+      const files = req.files || [];
+      if (!files.length) fail(400, 'Add a PDF or image of the program (JPG, PNG, WEBP). iPhone HEIC photos: take a screenshot of them instead.');
+      if (files.reduce((t, f) => t + f.size, 0) > 30 * 1024 * 1024) fail(400, 'Those files add up to more than 30 MB — try fewer pages at once.');
+      const key = `${coach.id}:${today()}`;
+      const used = importsToday.get(key) || 0;
+      if (used >= Number(process.env.PROGRAM_IMPORTS_PER_DAY || 20)) fail(429, 'You’ve reached today’s import limit — try again tomorrow.');
+      importsToday.set(key, used + 1);
+      const library = q('SELECT id, name, category, metric FROM exercises WHERE coach_id = ? ORDER BY name').all(coach.id);
+      let parsed;
+      try {
+        parsed = await programImporter(files, library.map((e) => e.name));
+      } catch (e) {
+        importsToday.set(key, used);
+        if (e.status) fail(e.status, e.message);
+        throw e;
+      }
+      res.json({ draft: draftFromImport(parsed, library) });
+    });
+
+  /** Expand repeated weeks and match exercises to the coach's library. */
+  function draftFromImport(parsed, library) {
+    const byName = new Map(library.map((e) => [e.name.toLowerCase().trim(), e]));
+    const CATS = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'other'];
+    const METRIC = ['load', 'time', 'distance', 'height', 'reps', 'velocity'];
+    const weeks = [];
+    for (const w of parsed.weeks) {
+      const copies = Math.max(1, Math.min(52, Math.round(Number(w.repeat) || 1)));
+      for (let c = 0; c < copies && weeks.length < 52; c++) {
+        weeks.push({
+          week: weeks.length + 1,
+          days: w.days.map((d, i) => ({
+            day: i + 1,
+            title: String(d.title || `Session ${i + 1}`).slice(0, 120),
+            notes: str(d.notes),
+            exercises: d.exercises.map((x) => {
+              const lib = byName.get(String(x.library_match || '').toLowerCase().trim()) || byName.get(String(x.name).toLowerCase().trim());
+              const lt = String(x.load_type || '').toLowerCase();
+              return {
+                name: lib ? lib.name : String(x.name).trim().slice(0, 120),
+                exercise_id: lib?.id ?? null,
+                new: !lib,
+                category: lib?.category ?? (CATS.find((c2) => String(x.category).toLowerCase().includes(c2)) || 'strength'),
+                metric: lib?.metric ?? (METRIC.find((m) => String(x.metric).toLowerCase().includes(m)) || 'load'),
+                block: str(x.block), sets: x.sets == null ? null : Math.round(x.sets), reps: str(x.reps),
+                load_type: LOAD_TYPES.find((t) => lt.includes(t)) || 'none',
+                percent: x.percent, rir: x.rir, rpe: x.rpe, fixed_load: x.fixed_load,
+                target: str(x.target), rest_seconds: x.rest_seconds == null ? null : Math.round(x.rest_seconds), tempo: str(x.tempo), notes: str(x.notes),
+              };
+            }),
+          })),
+        });
+      }
+    }
+    const newNames = [...new Set(weeks.flatMap((w) => w.days.flatMap((d) => d.exercises.filter((x) => x.new).map((x) => x.name))))];
+    return { name: String(parsed.name || 'Imported program').slice(0, 120), description: str(parsed.description), weeks, warnings: parsed.warnings || [], new_exercises: newNames };
+  }
+
+  // Create the program from a (possibly edited) draft. New exercises are added to the library.
+  app.post('/api/programs/import/create', (req, res) => {
+    const coach = requireCoach(req);
+    const d = req.body?.draft;
+    if (!d || !Array.isArray(d.weeks) || !d.weeks.length) fail(400, 'Nothing to create');
+    if (d.weeks.length > 52) fail(400, 'Programs can have at most 52 weeks');
+    const id = tx(db, () => {
+      const exId = new Map(q('SELECT id, name FROM exercises WHERE coach_id = ?').all(coach.id).map((e) => [e.name.toLowerCase().trim(), e.id]));
+      const resolve = (x) => {
+        if (x.exercise_id && q('SELECT 1 FROM exercises WHERE id = ? AND coach_id = ?').get(Number(x.exercise_id), coach.id)) return Number(x.exercise_id);
+        const key = String(x.name || '').toLowerCase().trim();
+        if (!key) fail(400, 'Every exercise needs a name');
+        if (!exId.has(key)) {
+          const info = q('INSERT INTO exercises (coach_id, name, category, metric) VALUES (?, ?, ?, ?)').run(
+            coach.id, String(x.name).trim().slice(0, 120), CATEGORIES.includes(x.category) ? x.category : 'strength', EXERCISE_METRICS.includes(x.metric) ? x.metric : 'load',
+          );
+          exId.set(key, Number(info.lastInsertRowid));
+        }
+        return exId.get(key);
+      };
+      const pid = Number(q('INSERT INTO programs (coach_id, name, description, weeks) VALUES (?, ?, ?, ?)').run(
+        coach.id, String(d.name || 'Imported program').trim().slice(0, 120), str(d.description), d.weeks.length,
+      ).lastInsertRowid);
+      d.weeks.forEach((w, wi) => {
+        (w.days || []).forEach((day, di) => {
+          const dayId = Number(q('INSERT INTO program_days (program_id, week, day, title, notes) VALUES (?, ?, ?, ?, ?)').run(
+            pid, wi + 1, di + 1, str(day.title) || `Session ${di + 1}`, str(day.notes),
+          ).lastInsertRowid);
+          (day.exercises || []).forEach((x, xi) => insertRx(dayId, { ...x, exercise_id: resolve(x), progression: 'inherit' }, xi, coach.id));
+        });
+      });
+      return pid;
+    });
+    res.status(201).json({ program: loadProgram(id) });
   });
 
   // Copy every session in one week to another week (replacing what's there).

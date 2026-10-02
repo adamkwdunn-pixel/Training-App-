@@ -588,3 +588,26 @@ tr.clickable:hover td { background: var(--hover); }
 .estimate { border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
 .assumptions { margin: 6px 0 2px; padding-left: 1.1rem; }
 .assumptions li { margin: 2px 0; }
+
+/* athlete list rows: the main area links to the athlete, tools on the right */
+.athlete-row { padding: 0; gap: 0; flex-wrap: wrap; }
+.delete-options { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px 72px; }
+@media (max-width: 600px) { .delete-options { padding-left: 18px; } }
+.athlete-link { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; padding: 14px 6px 14px 18px; color: var(--text); text-decoration: none !important; flex-wrap: wrap; }
+.athlete-link:hover { background: var(--hover); }
+.row-tools { display: flex; padding-right: 8px; }
+@media (max-width: 600px) { .athlete-link .badges { flex-basis: 100%; max-width: 100%; justify-content: flex-start; padding-left: 54px; } }
+
+/* Program import */
+.dropzone { display: flex; gap: 14px; align-items: center; border: 1.5px dashed var(--line); border-radius: var(--r-md); padding: 18px; cursor: pointer; transition: border-color .15s, background .15s; }
+.dropzone:hover, .dropzone:focus-visible, .dropzone.over { border-color: var(--text); background: rgba(255, 255, 255, .04); }
+.dropzone.disabled { cursor: default; opacity: .7; border-style: dashed; }
+.dropzone.card { border-width: 1.5px; }
+.import-warn { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 14px; }
+.import-warn ul { margin: 6px 0 0; padding-left: 18px; }
+.import-weeks { display: flex; flex-direction: column; gap: 8px; }
+.import-week { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.import-week-head { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 14px; background: none; border: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.import-week-head .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-day { padding: 8px 14px 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
+.new-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; margin-left: 6px; opacity: .8; }

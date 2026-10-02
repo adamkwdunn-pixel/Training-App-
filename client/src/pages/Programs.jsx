@@ -4,9 +4,12 @@ import { api } from '../api.js';
 import { useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
+import ProgramImport from '../components/ProgramImport.jsx';
+import { useAuth } from '../App.jsx';
 
 export default function Programs() {
   const nav = useNavigate();
+  const { system } = useAuth();
   const { data, error } = useApi('/programs');
   const [creating, setCreating] = useState(false);
   const [f, setF] = useState({ name: '', description: '', weeks: 4, days_per_week: 3 });
@@ -34,7 +37,8 @@ export default function Programs() {
           <button className="btn primary">Create program</button>
         </form>
       )}
-      {data.programs.length === 0 && !creating && <Empty>No programs yet. Create one, add sessions, then assign it to athletes.</Empty>}
+      <ProgramImport enabled={!!system?.import_configured} />
+      {data.programs.length === 0 && !creating && <Empty>No programs yet. Create one or import one above, add sessions, then assign it to athletes.</Empty>}
       <div className="list">
         {data.programs.map((p) => (
           <Link key={p.id} to={`/coach/programs/${p.id}`} className="row">

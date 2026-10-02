@@ -35,6 +35,19 @@ export default function Athletes() {
     setCode((await api('/me/invite-code', { method: 'POST' })).invite_code);
   };
 
+  const [confirming, setConfirming] = useState(null); // athlete id showing delete options
+  const deleteAthlete = async (a, permanent) => {
+    if (permanent && !confirm(`Permanently delete ${a.name} and all their data? This can’t be undone.`)) return;
+    await api(`/athletes/${a.id}${permanent ? '?permanent=1' : ''}`, { method: 'DELETE' });
+    setConfirming(null);
+    reload();
+  };
+  const removeDemo = async () => {
+    if (!confirm(`Permanently delete the ${data.demo_count} demo athletes (Sam, Jordan, Alex…) and all their demo data?\n\nYour own account, your programs and any real athletes are kept.`)) return;
+    await api('/athletes/remove-demo', { method: 'POST' });
+    reload();
+  };
+
   const addMe = async () => {
     await api('/me/athlete-profile', { method: 'POST' });
     reload();
@@ -77,6 +90,17 @@ export default function Athletes() {
         </form>
       )}
 
+      {data.demo_count > 0 && (
+        <div className="card flat row" style={{ border: '1px solid var(--warn)', marginBottom: 14 }}>
+          <Icon name="alert" />
+          <div className="grow">
+            <strong>{data.demo_count} demo athlete{data.demo_count === 1 ? '' : 's'} in your squad</strong>
+            <div className="small muted">Clear them out before adding your real squad.</div>
+          </div>
+          <button className="btn small" onClick={removeDemo}>Remove demo athletes</button>
+        </div>
+      )}
+
       {created && <LoginDetails details={created} onClose={() => setCreated(null)} />}
 
       <div className="card flat row" style={{ border: '1px solid var(--line)', marginBottom: 14 }}>
@@ -94,7 +118,8 @@ export default function Athletes() {
       {data.athletes.length === 0 && <Empty>No athletes yet. Share your team code or add them above.</Empty>}
       <div className="list">
         {list.map((a) => (
-          <Link key={a.id} to={`/athletes/${a.id}`} className="row">
+          <div key={a.id} className="row athlete-row">
+            <Link to={`/athletes/${a.id}`} className="athlete-link">
             <div className="avatar">{a.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}</div>
             <div className="grow">
               <strong>{a.name}</strong>{a.is_me && <span className="badge solid" style={{ marginLeft: 6 }}>You</span>} {a.position && <span className="muted small">· {a.position}</span>}
@@ -108,7 +133,19 @@ export default function Athletes() {
               {a.unread_messages > 0 && <Badge tone="info">{a.unread_messages} msg</Badge>}
               {a.unseen_logs > 0 && <Badge>{a.unseen_logs} new</Badge>}
             </div>
-          </Link>
+            </Link>
+            <div className="row-tools">
+              <Link to={`/athletes/${a.id}?tab=details`} className="icon-btn" aria-label={`Edit ${a.name}`} title="Edit details"><Icon name="edit" size={18} /></Link>
+              {!a.is_me && <button className="icon-btn" onClick={() => setConfirming(confirming === a.id ? null : a.id)} aria-label={`Delete ${a.name}`} title="Delete"><Icon name="trash" size={18} /></button>}
+            </div>
+            {confirming === a.id && (
+              <div className="delete-options">
+                <button className="btn small" onClick={() => deleteAthlete(a, false)}>Remove from squad<span className="tiny muted">&nbsp;· keeps history</span></button>
+                <button className="btn small danger" onClick={() => deleteAthlete(a, true)}>Delete permanently</button>
+                <button className="btn small ghost" onClick={() => setConfirming(null)}>Cancel</button>
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </>

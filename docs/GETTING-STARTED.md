@@ -122,6 +122,20 @@ It needs an Anthropic API key, which is a pay-as-you-go account separate from an
 
 **Cost:** roughly 1–2 US cents per estimate. A squad of 30 logging three meals a day is about US$1–2 a day. Each athlete is capped at 40 estimates a day by default; you can change that with an `AI_ESTIMATES_PER_DAY` variable.
 
+### Importing a program from a PDF or photo
+
+The same key turns on **Coach → Programs → Import a program**.
+
+1. Drag a PDF onto the dashed box, or tap it to choose files. Photos and screenshots of a written program also work (JPG/PNG, up to 10 files at once). For an iPhone HEIC photo, take a screenshot of it first.
+2. Tap **Read this file**. This takes a minute or two.
+3. Check the preview:
+   - Weeks, sessions and exercises with sets × reps and loads.
+   - A "Worth checking" list of anything the AI couldn't read clearly.
+   - Exercises it will add to your library.
+4. Tap **Create program**. Everything can still be edited in the program builder afterwards.
+
+Clear, typed programs work best. Very long programs may need importing a block at a time. **Cost:** roughly US$0.10–0.35 per import, depending on the number of pages. Each coach is capped at 20 imports a day (`PROGRAM_IMPORTS_PER_DAY`).
+
 Without a key, the food log still works: athletes type the calories and macros themselves.
 
 ---
