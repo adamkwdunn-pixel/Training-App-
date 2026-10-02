@@ -50,6 +50,7 @@ Athletes enter their own details, and the app works everything out and shows the
 - **Coach view:** a squad table of each athlete's goal, targets, 7-day average bodyweight, 4-week rate vs goal, body fat and lean mass.
 
 - **Food log with AI estimates:** athletes describe what they ate in plain words. Claude (Anthropic's model `claude-opus-5-5`, via the official SDK with structured outputs) breaks it into foods with estimated calories, protein, carbs and fat, and lists any portion sizes it had to assume. The athlete checks or adjusts the numbers and saves them. The day is totalled against their targets with a calorie ring and macro bars, and the coach sees each athlete's food log plus 7-day average intake on the squad nutrition table. Needs `ANTHROPIC_API_KEY`; without it, athletes enter the numbers manually.
+- **Plain-English progression rules:** on Coach → Progression rules, describe a rule in your own words ("add 2.5 kg when they hit every rep; deload 10% after two failed sessions") or describe a change to an existing rule. Claude turns it into the app's rule format, which is shown back as numbered plain-English steps for you to check before saving. Every rule is also listed in plain English with where it's in use, and the detailed editor is still there for fine-tuning. Saved changes apply from the next session anyone logs. Uses `ANTHROPIC_API_KEY`.
 - **Program import:** on Coach → Programs, drop a PDF or photos/screenshots of a written program (up to 10 files). Claude reads it into weeks, sessions and exercises: sets, reps, %, RIR, RPE, kg, rest, tempo, supersets and repeated weeks. Exercises are matched to the coach's library, and new ones are flagged. The coach checks the preview and anything flagged as unclear, then creates the program and edits it in the builder. Uses the same `ANTHROPIC_API_KEY`.
 
 ### Recovery
@@ -113,6 +114,7 @@ Any host that runs Node or Docker and gives you a **persistent disk** works, for
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `MAIL_FROM` (or `SMTP_URL`) | *(unset)* | Sends athletes their login details by email. Without it, the coach copies/shares them instead |
 | `ANTHROPIC_API_KEY` | *(unset)* | Turns on AI food estimates in the food log |
 | `AI_ESTIMATES_PER_DAY` | `40` | Daily cap on AI estimates per athlete |
+| `RULE_AI_PER_DAY` | `50` | Daily cap on plain-English rule writing per coach |
 | `PROGRAM_IMPORTS_PER_DAY` | `20` | Daily cap on program imports (PDF/photo) per coach |
 | `APP_URL` | *(this site's address)* | The link put in emails, if it should differ from the address the coach is using |
 | `SEED_DEMO` | *(unset)* | `true` loads the demo squad the first time the server starts on an empty database |

@@ -17,6 +17,7 @@ import { registerRecovery, seedProtocols } from './routes/recovery.js';
 import { createNotifier, registerNotifications, webPushSender } from './notify.js';
 import { createMailer, loginEmail, tempPassword } from './mail.js';
 import { createFoodEstimator } from './lib/food-ai.js';
+import { createRuleWriter } from './lib/rule-ai.js';
 import { createProgramImporter, IMPORT_TYPES } from './lib/program-import.js';
 
 class HttpError extends Error {
@@ -38,7 +39,7 @@ const CATEGORIES = ['strength', 'power', 'speed', 'conditioning', 'mobility', 'o
 const EXERCISE_METRICS = ['load', 'time', 'distance', 'height', 'reps', 'velocity'];
 const COMMENT_TYPES = ['general', 'workout', 'video', 'injury'];
 
-export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev', mailer = createMailer(), estimator = createFoodEstimator(), programImporter = createProgramImporter() } = {}) {
+export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(process.env.MAX_UPLOAD_MB || 300), push, version = 'dev', mailer = createMailer(), estimator = createFoodEstimator(), programImporter = createProgramImporter(), ruleWriter = createRuleWriter() } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1); // behind Render's proxy: lets req.protocol report https
@@ -454,11 +455,42 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   });
 
   // ---------- progression rules ----------
-  app.get('/api/rules/meta', (_req, res) => res.json({ metrics: METRICS, ops: OPS, actions: ACTIONS, presets: PRESET_RULES }));
+  app.get('/api/rules/meta', (_req, res) => res.json({ metrics: METRICS, ops: OPS, actions: ACTIONS, presets: PRESET_RULES, ai_enabled: !!ruleWriter }));
+
+  // Plain English -> rule. Returns a draft for the coach to check; nothing is saved here.
+  const ruleAiToday = new Map();
+  app.post('/api/rules/ai', async (req, res) => {
+    const coach = requireCoach(req);
+    if (!ruleWriter) fail(503, 'Writing rules in plain English needs the AI key (ANTHROPIC_API_KEY) set in Render.');
+    const text = String(req.body?.text || '').trim().slice(0, 2000);
+    if (text.length < 5) fail(400, 'Describe the rule in a sentence or two');
+    let current = null;
+    if (req.body?.rule_id) {
+      const r = ownedBy('progression_rules', req.body.rule_id, coach.id, 'Rule');
+      current = { name: r.name, description: r.description, config: JSON.parse(r.config) };
+    } else if (req.body?.rule?.config) {
+      current = { name: str(req.body.rule.name), description: str(req.body.rule.description), config: req.body.rule.config };
+    }
+    const key = `${coach.id}:${today()}`;
+    const used = ruleAiToday.get(key) || 0;
+    if (used >= Number(process.env.RULE_AI_PER_DAY || 50)) fail(429, 'You’ve reached today’s limit for AI rule writing — try again tomorrow.');
+    ruleAiToday.set(key, used + 1);
+    try {
+      res.json({ draft: await ruleWriter(text, current) });
+    } catch (e) {
+      ruleAiToday.set(key, used);
+      if (e.status) fail(e.status, e.message);
+      throw e;
+    }
+  });
   app.get('/api/rules', (req, res) => {
     const coach = requireCoach(req);
     ensureRulePresets(db, coach.id);
-    const rules = q('SELECT * FROM progression_rules WHERE coach_id = ? ORDER BY name').all(coach.id);
+    const rules = q(`SELECT r.*,
+        (SELECT COUNT(*) FROM programs p WHERE p.rule_id = r.id) AS program_count,
+        (SELECT COUNT(*) FROM assignments a WHERE a.rule_id = r.id AND a.active = 1) AS athlete_count,
+        (SELECT COUNT(*) FROM prescriptions x WHERE x.rule_id = r.id AND x.progression = 'rule') AS exercise_count
+      FROM progression_rules r WHERE r.coach_id = ? ORDER BY r.name`).all(coach.id);
     res.json({ rules: rules.map((r) => ({ ...r, config: JSON.parse(r.config) })) });
   });
   const ruleFields = (b) => {
@@ -472,6 +504,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       }
       for (const a of c.then || []) if (!(a.action in ACTIONS)) fail(400, `Unknown action: ${a.action}`);
     }
+    for (const a of config.otherwise || []) if (!(a.action in ACTIONS)) fail(400, `Unknown action: ${a.action}`);
     return [String(b.name).trim(), str(b.description), JSON.stringify(config)];
   };
   app.post('/api/rules', (req, res) => {

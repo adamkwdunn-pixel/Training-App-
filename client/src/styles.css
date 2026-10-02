@@ -611,3 +611,14 @@ tr.clickable:hover td { background: var(--hover); }
 .import-week-head .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .import-day { padding: 8px 14px 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
 .new-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; margin-left: 6px; opacity: .8; }
+
+/* Progression rules */
+.rule-card { border: 1px solid var(--line); border-radius: var(--r-lg, 22px); overflow: hidden; }
+.rule-card-main { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 16px 18px 6px; background: none; border: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.rule-card-actions { display: flex; gap: 8px; padding: 6px 18px 14px; }
+.rule-sentences { margin: 4px 0 0; padding-left: 1.1rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.rule-sentences.numbered { color: var(--text); padding-left: 1.3rem; gap: 8px; }
+.card.highlight { border-color: var(--warn); }
+.examples { display: flex; flex-direction: column; gap: 6px; }
+.example { text-align: left; font: inherit; font-size: 13px; color: var(--muted); background: none; border: 1px dashed var(--line); border-radius: var(--r-md); padding: 8px 12px; cursor: pointer; }
+.example:hover { color: var(--text); }

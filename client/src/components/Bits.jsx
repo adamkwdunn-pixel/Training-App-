@@ -5,7 +5,12 @@ export function PageHeader({ title, back, children, sub }) {
   return (
     <div className="page-header">
       <div className="page-title">
-        {back && (
+        {back && typeof back === 'object' && (
+          <button type="button" className="icon-btn" aria-label="Back" onClick={back.onClick}>
+            <Icon name="back" />
+          </button>
+        )}
+        {back && typeof back !== 'object' && (
           <Link to={back} className="icon-btn" aria-label="Back">
             <Icon name="back" />
           </Link>

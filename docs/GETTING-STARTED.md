@@ -122,6 +122,15 @@ It needs an Anthropic API key, which is a pay-as-you-go account separate from an
 
 **Cost:** roughly 1–2 US cents per estimate. A squad of 30 logging three meals a day is about US$1–2 a day. Each athlete is capped at 40 estimates a day by default; you can change that with an `AI_ESTIMATES_PER_DAY` variable.
 
+### Writing progression rules in plain English
+
+The same key turns on plain-English rules in **Coach → Progression rules**.
+
+- **To make a rule:** tap **New rule**, describe it in your own words, then tap **Write rule**.
+- **To change a rule:** tap it, type what you want to change (e.g. "make the deload 15%"), then tap **Update rule**.
+
+The rule is shown back as numbered steps for you to check, with a note on anything that had to be interpreted. It isn't live until you tap **Save rule**. From then on it applies to the next session any athlete on it logs. Each request costs well under a cent.
+
 ### Importing a program from a PDF or photo
 
 The same key turns on **Coach → Programs → Import a program**.
