@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
@@ -71,10 +72,20 @@ export default function LogView() {
               </thead>
               <tbody>
                 {g.sets.map((s) => g.metric === 'load' ? (
-                  <tr key={s.id}>
-                    <td>{s.set_number}</td><td className="muted">{fmtKg(s.target_load)}</td><td>{fmtKg(s.weight)}</td>
-                    <td>{s.reps ?? '—'}</td><td>{s.rir ?? '—'}</td><td className="muted">{fmtKg(s.e1rm)}</td>
-                  </tr>
+                  <Fragment key={s.id}>
+                    {s.adjust_note && (
+                      <tr className="adjust-row">
+                        <td colSpan={6} className="tiny">
+                          In-session adjustment: app set {fmtKg(s.suggested_load)} — {s.adjust_note}
+                          {s.weight != null && s.suggested_load != null && Number(s.weight) !== Number(s.suggested_load) ? ` · athlete used ${fmtKg(s.weight)}` : ''}
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
+                      <td>{s.set_number}</td><td className="muted">{fmtKg(s.target_load)}</td><td>{fmtKg(s.weight)}</td>
+                      <td>{s.reps ?? '—'}</td><td>{s.rir ?? '—'}</td><td className="muted">{fmtKg(s.e1rm)}</td>
+                    </tr>
+                  </Fragment>
                 ) : (
                   <tr key={s.id}>
                     <td>{s.set_number}</td><td>{g.metric === 'time' ? s.time_seconds ?? '—' : s.result ?? '—'}</td><td>{s.reps ?? '—'}</td><td className="small">{s.notes}</td>

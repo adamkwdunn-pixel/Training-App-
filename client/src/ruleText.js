@@ -10,6 +10,7 @@ export const METRIC_LABELS = {
   last_set_rir: 'last-set RIR',
   rir_vs_target: 'RIR above target',
   top_set_weight: 'top set weight (kg)',
+  load_vs_target_pct: 'weight vs prescribed (%)',
   e1rm: 'estimated 1RM (kg)',
   e1rm_vs_max_pct: 'e1RM vs max (%)',
   success_streak: 'successful sessions in a row',
@@ -36,6 +37,8 @@ export function conditionText(w) {
   if (w.metric === 'success_streak' && w.op === '>=') return `it’s the ${ordinal(v)} successful session in a row`;
   if (w.metric === 'reps_missed' && w.op === '>=') return `${v} or more reps were missed`;
   if (w.metric === 'e1rm_vs_max_pct') return `estimated 1RM is ${Math.abs(v)}% or more ${v >= 0 ? 'above' : 'below'} the current max`.replace(' or more', w.op.includes('=') ? ' or more' : '');
+  if (w.metric === 'load_vs_target_pct' && (w.op === '<' || w.op === '<=') && v <= 0) return `the weight had to drop ${Math.abs(v)}% or more below what was prescribed`;
+  if (w.metric === 'load_vs_target_pct' && (w.op === '>' || w.op === '>=') && v >= 0) return `they lifted ${v}% or more above the prescribed weight`;
   if (w.metric === 'time_vs_target_pct') return `best time is ${w.op.startsWith('>') ? 'more than' : 'within'} ${Math.abs(v)}% ${v >= 0 ? 'slower than' : 'faster than'} target`;
   return `${METRIC_LABELS[w.metric] || w.metric.replaceAll('_', ' ')} ${OP_WORDS[w.op] || w.op} ${v}`;
 }

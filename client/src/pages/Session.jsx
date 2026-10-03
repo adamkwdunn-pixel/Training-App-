@@ -5,6 +5,7 @@ import { useAuth } from '../App.jsx';
 import { describeRx, today, useApi } from '../util.js';
 import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
+import { nextSetLoad, targetRirOf } from '../../../shared/effort.js';
 
 const draftKey = (a, d) => `session-draft-${a}-${d}`;
 const readDraft = (k) => {
@@ -40,6 +41,26 @@ function initialRows(day) {
   return rows;
 }
 
+/**
+ * In-session (tactical) adjustment: the last completed set with weight, reps and RIR sets the weight
+ * for the remaining sets, unless the athlete typed their own weight for a set.
+ */
+function reflow(list, r, autoreg) {
+  if (r.metric !== 'load' || !autoreg?.enabled) return { list, advice: null };
+  let k = -1;
+  for (let i = list.length - 1; i >= 0; i--) if (list[i].done) { k = i; break; }
+  if (k < 0) return { list, advice: null };
+  const advice = nextSetLoad(list[k], r, autoreg);
+  if (!advice) {
+    const needsRir = targetRirOf(r) != null && list[k].rir === '' && k < list.length - 1;
+    return { list, advice: needsRir ? { direction: 'missing', reason: `Add your RIR for set ${k + 1} and the app will set the weight for set ${k + 2}.` } : null };
+  }
+  const out = list.map((s, j) => (j > k && !s.done && !s.manual
+    ? { ...s, weight: advice.load, suggested_load: advice.load, adjust_note: advice.direction === 'hold' ? '' : advice.reason, adjust_dir: advice.direction }
+    : s));
+  return { list: out, advice: { ...advice, next: out.findIndex((s, j) => j > k && !s.done) } };
+}
+
 export default function Session() {
   const { dayId, athleteId: paramAthlete } = useParams();
   const { user } = useAuth();
@@ -69,15 +90,22 @@ export default function Session() {
   const day = data.day;
   const isCoach = user.role === 'coach';
 
-  const setSet = (rxId, i, patch) => setRows({ ...rows, [rxId]: rows[rxId].map((s, j) => (j === i ? { ...s, ...patch } : s)) });
+  const rxById = (id) => day.prescriptions.find((r) => r.id === Number(id));
+  const update = (rxId, list) => setRows({ ...rows, [rxId]: reflow(list, rxById(rxId), data.autoreg).list });
+  const setSet = (rxId, i, patch) => {
+    const list = rows[rxId];
+    // Typing a weight for a set that hasn't been done yet means "I'll choose this one myself".
+    const manual = 'weight' in patch && !list[i].done ? { manual: true } : {};
+    update(rxId, list.map((s, j) => (j === i ? { ...s, ...patch, ...manual } : s)));
+  };
   const addSet = (rxId) => {
     const list = rows[rxId] || [];
     const last = list[list.length - 1] || {};
-    setRows({ ...rows, [rxId]: [...list, { ...last, done: false }] });
+    update(rxId, [...list, { ...last, done: false, manual: false }]);
   };
   const toggleDone = (r, i) => {
     const s = rows[r.id][i];
-    setSet(r.id, i, { done: !s.done });
+    update(r.id, rows[r.id].map((x, j) => (j === i ? { ...x, done: !x.done } : x)));
     if (!s.done && r.rest_seconds) setTimer({ end: Date.now() + r.rest_seconds * 1000, total: r.rest_seconds });
   };
 
@@ -91,6 +119,7 @@ export default function Session() {
         sets.push({
           prescription_id: r.id, exercise_id: r.exercise_id, set_number: i + 1, target_load: r.target_load,
           weight: s.weight, reps: s.reps, rir: s.rir, time_seconds: s.time_seconds, result: s.result,
+          suggested_load: s.suggested_load ?? null, adjust_note: s.adjust_note || null,
         });
       });
     }
@@ -148,7 +177,9 @@ export default function Session() {
       {day.notes && <p className="card small">{day.notes}</p>}
       {!data.assignment_id && <p className="error">This session isn’t part of an active program for this athlete.</p>}
 
-      {day.prescriptions.map((r) => (
+      {day.prescriptions.map((r) => {
+        const advice = reflow(rows[r.id], r, data.autoreg).advice;
+        return (
         <section key={r.id} className="card ex-card">
           <div className="ex-head">
             <div className="grow">
@@ -183,7 +214,9 @@ export default function Session() {
                 <span className="set-n">{i + 1}</span>
                 {r.metric === 'load' ? (
                   <>
-                    <input type="number" inputMode="decimal" step="0.5" value={s.weight ?? ''} onChange={(e) => setSet(r.id, i, { weight: e.target.value })} aria-label="Weight" />
+                    <input
+                      className={!s.done && !s.manual && s.adjust_note ? `auto-${s.adjust_dir}` : ''}
+                      type="number" inputMode="decimal" step="0.5" value={s.weight ?? ''} onChange={(e) => setSet(r.id, i, { weight: e.target.value })} aria-label="Weight" />
                     <input type="number" inputMode="numeric" value={s.reps ?? ''} onChange={(e) => setSet(r.id, i, { reps: e.target.value })} aria-label="Reps" />
                     <select value={s.rir} onChange={(e) => setSet(r.id, i, { rir: e.target.value })} aria-label="Reps in reserve">
                       <option value="">–</option>
@@ -203,6 +236,17 @@ export default function Session() {
               </div>
             ))}
           </div>
+          {advice && advice.next !== -1 && (
+            <div className={`autoreg ${advice.direction}`} role="status">
+              <strong>{advice.direction === 'up' ? '↑' : advice.direction === 'down' ? '↓' : advice.direction === 'hold' ? '✓' : 'ℹ'}</strong>
+              <span>
+                {advice.direction === 'missing' ? advice.reason : (
+                  <>Set {advice.next + 1}: <strong>{rows[r.id][advice.next].weight} kg</strong>{' · '}{advice.reason}
+                    {rows[r.id][advice.next].manual ? ' (you chose your own weight for this set)' : ''}</>
+                )}
+              </span>
+            </div>
+          )}
           <div className="ex-foot">
             <button type="button" className="btn small ghost" onClick={() => addSet(r.id)}>+ set</button>
             <label className="btn small ghost file-btn">
@@ -211,7 +255,8 @@ export default function Session() {
             </label>
           </div>
         </section>
-      ))}
+        );
+      })}
 
       <section className="card stack">
         <div className="grid2">

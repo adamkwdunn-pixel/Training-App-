@@ -1,42 +1,8 @@
 // Load calculation: percentages, RIR/RPE, fixed loads, rounding and e1RM estimates.
 
-// %1RM by "effective reps" (reps performed + reps in reserve), in half steps from 1 to 15.5.
-// This is the widely used RPE/RIR chart (RPE 10 = 0 RIR).
-const EFFECTIVE_REPS_PCT = [
-  [1, 100], [1.5, 97.8], [2, 95.5], [2.5, 93.9], [3, 92.2], [3.5, 90.7],
-  [4, 89.2], [4.5, 87.8], [5, 86.3], [5.5, 85.0], [6, 83.7], [6.5, 82.4],
-  [7, 81.1], [7.5, 79.9], [8, 78.6], [8.5, 77.4], [9, 76.2], [9.5, 75.1],
-  [10, 73.9], [10.5, 72.3], [11, 70.7], [11.5, 69.4], [12, 68.0], [12.5, 66.7],
-  [13, 65.3], [13.5, 64.0], [14, 62.6], [14.5, 61.3], [15, 59.9], [15.5, 58.6],
-];
+import { pctForRepsRir, estimate1RM, roundTo } from '../../shared/effort.js';
 
-/** Percent of 1RM (0-100) a lifter can use for `reps` leaving `rir` reps in reserve. */
-export function pctForRepsRir(reps, rir = 0) {
-  const e = Math.max(1, Number(reps) + Number(rir || 0));
-  const last = EFFECTIVE_REPS_PCT[EFFECTIVE_REPS_PCT.length - 1];
-  if (e >= last[0]) {
-    // Extrapolate ~2.6% per extra effective rep beyond the chart, floor at 30%.
-    return Math.max(30, last[1] - (e - last[0]) * 2.6);
-  }
-  for (let i = 0; i < EFFECTIVE_REPS_PCT.length - 1; i++) {
-    const [e0, p0] = EFFECTIVE_REPS_PCT[i];
-    const [e1, p1] = EFFECTIVE_REPS_PCT[i + 1];
-    if (e >= e0 && e <= e1) return p0 + ((e - e0) / (e1 - e0)) * (p1 - p0);
-  }
-  return 100;
-}
-
-/** Estimated 1RM from a set of `weight` x `reps` with `rir` in reserve. */
-export function estimate1RM(weight, reps, rir = 0) {
-  if (!weight || !reps) return null;
-  return weight / (pctForRepsRir(reps, rir) / 100);
-}
-
-export function roundTo(value, increment = 2.5) {
-  if (value == null || Number.isNaN(value)) return null;
-  const inc = Number(increment) || 2.5;
-  return Math.round(value / inc) * inc;
-}
+export { pctForRepsRir, estimate1RM, roundTo };
 
 /** Parse a rep prescription like "5", "3-5", "8,6,4" or "AMRAP" into a number for load maths. */
 export function parseReps(reps) {

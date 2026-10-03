@@ -42,6 +42,9 @@ export default function Rules() {
         a program, or per exercise in the session editor. Changes to a rule apply from the next session anyone logs.
       </div>
 
+      <AutoregCard />
+
+      <h2 style={{ margin: '8px 0 0' }}>Between sessions</h2>
       <div className="list">
         {data.rules.map((r) => (
           <div key={r.id} className="rule-card">
@@ -62,6 +65,57 @@ export default function Rules() {
             </div>
           </div>
         ))}
+      </div>
+    </>
+  );
+}
+
+/** In-session (tactical) RIR adjustments — works alongside whichever rule handles the long-term progression. */
+function AutoregCard() {
+  const { data, reload } = useApi('/autoreg');
+  const [open, setOpen] = useState(false);
+  if (!data) return null;
+  const st = data.settings;
+  const save = async (patch) => {
+    await api('/autoreg', { method: 'PUT', body: patch });
+    reload();
+  };
+  return (
+    <>
+      <h2 style={{ margin: '8px 0 0' }}>Within a session</h2>
+      <div className="card stack">
+        <div className="inline-form" style={{ alignItems: 'center' }}>
+          <div className="grow">
+            <strong>Adjust the next set from RIR</strong>
+            <div className="small muted">When an athlete logs a set harder or easier than the RIR/RPE you prescribed, the app changes the weight for their next set.</div>
+          </div>
+          <input type="checkbox" className="switch" checked={st.enabled} onChange={(e) => save({ enabled: e.target.checked })} aria-label="Adjust the next set from RIR" />
+        </div>
+        {st.enabled && (
+          <label>
+            Largest change between two sets
+            <select value={st.max_change_pct} onChange={(e) => save({ max_change_pct: Number(e.target.value) })}>
+              {[5, 7.5, 10, 12.5, 15].map((v) => <option key={v} value={v}>{v}%</option>)}
+            </select>
+          </label>
+        )}
+        <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(!open)} aria-expanded={open}>
+          <Icon name={open ? 'up' : 'down'} size={16} /> How it works
+        </button>
+        {open && (
+          <div className="small muted stack" style={{ gap: 6 }}>
+            <p style={{ margin: 0 }}>It only runs on exercises with an RIR or RPE target, and only once the athlete has entered weight, reps and RIR for a set.</p>
+            <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+              <li><strong>Size of change:</strong> each rep in reserve is worth about 2.5% of 1RM, or roughly 3% of the bar weight in the 5–12 rep range. The next weight is worked out from the set just done (reps + RIR) on the same RPE/RIR chart used for planned loads, aiming for the reps they did, kept inside your rep range, at your target RIR.</li>
+              <li><strong>Small misses are ignored:</strong> athletes typically misjudge RIR by about 1 rep, so a set within 1 RIR of target, inside the rep range, keeps the same weight.</li>
+              <li><strong>Increases are cautious:</strong> RIR ratings are least accurate far from failure, and fatigue builds set to set. So “too easy” counts as at most 3 RIR over target, and only ¾ of the calculated increase is used.</li>
+              <li><strong>Reps outside the range count too:</strong> going past the top of the range at the target RIR moves the weight up, and falling short of the bottom moves it down.</li>
+              <li><strong>Plate steps:</strong> weights round to the athlete’s plate increment, a clear miss always moves at least one step, and the change between two sets never goes past the limit above.</li>
+              <li><strong>Athletes stay in charge:</strong> if they type their own weight for a set, the app leaves that set alone.</li>
+            </ul>
+            <p style={{ margin: 0 }}><strong>With your progression rules:</strong> these changes only affect the rest of today’s session. The rules below still decide next session’s weight. A session only counts as “all reps completed” (what linear and double progression use) if the reps were done at the prescribed weight or heavier. So if the app had to drop the weight, the rule holds rather than adding load. You can also use “weight vs prescribed (%)” in your own rules.</p>
+          </div>
+        )}
       </div>
     </>
   );

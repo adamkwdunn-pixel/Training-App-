@@ -134,7 +134,9 @@ CREATE TABLE IF NOT EXISTS set_logs (
   rir REAL,
   time_seconds REAL,
   result REAL,
-  notes TEXT
+  notes TEXT,
+  suggested_load REAL,
+  adjust_note TEXT
 );
 
 CREATE TABLE IF NOT EXISTS progression_events (
@@ -361,6 +363,10 @@ function migrate(db) {
   for (const [col, type] of [['sex', 'TEXT'], ['birth_date', 'TEXT'], ['height_cm', 'REAL'], ['must_change_password', 'INTEGER NOT NULL DEFAULT 0'], ['linked_user_id', 'INTEGER']]) {
     if (!cols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
   }
+  // Sets record the in-session (RIR) weight suggestion the athlete was given.
+  const sl = new Set(db.prepare('PRAGMA table_info(set_logs)').all().map((c) => c.name));
+  if (!sl.has('suggested_load')) db.exec('ALTER TABLE set_logs ADD COLUMN suggested_load REAL');
+  if (!sl.has('adjust_note')) db.exec('ALTER TABLE set_logs ADD COLUMN adjust_note TEXT');
   // Programs gained a default progression rule.
   if (!db.prepare('PRAGMA table_info(programs)').all().some((c) => c.name === 'rule_id')) db.exec('ALTER TABLE programs ADD COLUMN rule_id INTEGER');
   const np = new Set(db.prepare('PRAGMA table_info(nutrition_profiles)').all().map((c) => c.name));

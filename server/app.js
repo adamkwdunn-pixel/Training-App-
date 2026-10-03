@@ -10,6 +10,7 @@ import { ageFrom, weeklyRate, withTrend } from '../shared/nutrition.js';
 import { composition } from '../shared/bodyfat.js';
 import { authenticate, hashPassword, verifyPassword, issueToken, newInviteCode, publicUser } from './auth.js';
 import { targetLoad, estimate1RM } from './lib/loads.js';
+import { AUTOREG_DEFAULTS } from '../shared/effort.js';
 import { computeMetrics, applyRule, METRICS, OPS, ACTIONS, PRESET_RULES } from './lib/progression.js';
 import { registerTesting, ensureMainLifts } from './routes/testing.js';
 import { registerNutrition } from './routes/nutrition.js';
@@ -881,6 +882,29 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     res.json({ ok: true });
   });
 
+  // ---------- in-session (tactical) weight adjustments from RIR ----------
+  const autoregFor = (coachId) => {
+    let saved = {};
+    try {
+      saved = JSON.parse(q('SELECT value FROM app_settings WHERE key = ?').get(`autoreg:${coachId}`)?.value || '{}');
+    } catch {
+      /* ignore bad JSON */
+    }
+    return { enabled: saved.enabled ?? AUTOREG_DEFAULTS.enabled, max_change_pct: saved.max_change_pct ?? AUTOREG_DEFAULTS.max_change_pct };
+  };
+  app.get('/api/autoreg', (req, res) => res.json({ settings: autoregFor(requireCoach(req).id) }));
+  app.put('/api/autoreg', (req, res) => {
+    const coach = requireCoach(req);
+    const cur = autoregFor(coach.id);
+    const b = req.body || {};
+    const next = {
+      enabled: b.enabled === undefined ? cur.enabled : !!b.enabled,
+      max_change_pct: b.max_change_pct === undefined ? cur.max_change_pct : Math.min(20, Math.max(2.5, Number(b.max_change_pct) || 10)),
+    };
+    q('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run(`autoreg:${coach.id}`, JSON.stringify(next));
+    res.json({ settings: next });
+  });
+
   // ---------- athlete plan & session targets ----------
   function dayWithTargets(athlete, day) {
     const rxs = q(`SELECT r.*, e.name AS exercise_name, e.category, e.metric, e.demo_url, e.cues
@@ -923,7 +947,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     const asg = q('SELECT * FROM assignments WHERE athlete_id = ? AND program_id = ? ORDER BY active DESC, id DESC').get(a.id, day.program_id);
     if (!asg && req.user.role !== 'coach') fail(403, 'This session isn’t in your program');
     if (req.user.role === 'coach') programForCoach(req, day.program_id);
-    res.json({ day: dayWithTargets(a, day), assignment_id: asg?.id ?? null });
+    res.json({ day: dayWithTargets(a, day), assignment_id: asg?.id ?? null, autoreg: { ...autoregFor(a.coach_id ?? a.id), increment: a.load_increment || 2.5 } });
   });
 
   // ---------- workout logs ----------
@@ -958,10 +982,11 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
         const rx = s.prescription_id && day ? q('SELECT * FROM prescriptions WHERE id = ? AND day_id = ?').get(Number(s.prescription_id), day.id) : null;
         const exerciseId = rx ? rx.exercise_id : Number(s.exercise_id);
         if (!rx) ownedBy('exercises', exerciseId, coachId, 'Exercise');
-        q(`INSERT INTO set_logs (workout_log_id, prescription_id, exercise_id, set_number, target_load, weight, reps, rir, time_seconds, result, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        q(`INSERT INTO set_logs (workout_log_id, prescription_id, exercise_id, set_number, target_load, weight, reps, rir, time_seconds, result, notes,
+             suggested_load, adjust_note)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           logId, rx?.id ?? null, exerciseId, num(s.set_number) || i + 1, num(s.target_load), num(s.weight), num(s.reps),
-          num(s.rir), num(s.time_seconds), num(s.result), str(s.notes),
+          num(s.rir), num(s.time_seconds), num(s.result), str(s.notes), num(s.suggested_load), (str(s.adjust_note) || '').slice(0, 200) || null,
         );
         const key = rx ? `rx${rx.id}` : `ex${exerciseId}`;
         if (!groups.has(key)) groups.set(key, { rx, exerciseId, sets: [] });
@@ -974,7 +999,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
         const rx = g.rx ? { ...g.rx, metric: ex.metric } : { sets: g.sets.length, reps: null, load_type: 'none', metric: ex.metric };
         const state = getState(athlete.id, g.exerciseId);
         const metrics = computeMetrics(rx, g.sets.map((s) => ({
-          weight: num(s.weight), reps: num(s.reps), rir: num(s.rir), time_seconds: num(s.time_seconds), result: num(s.result),
+          weight: num(s.weight), reps: num(s.reps), rir: num(s.rir), time_seconds: num(s.time_seconds), result: num(s.result), target_load: num(s.target_load),
         })), state);
 
         let ruleId = null;

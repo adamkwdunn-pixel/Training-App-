@@ -15,7 +15,7 @@
 import { estimate1RM, parseReps } from './loads.js';
 
 export const METRICS = {
-  all_reps_completed: 'All prescribed sets & reps completed (1 = yes, 0 = no)',
+  all_reps_completed: 'All prescribed sets & reps completed at (or above) the prescribed weight (1 = yes, 0 = no)',
   top_of_range: 'Every set hit the TOP of the rep range, e.g. 12 on “8-12” (1 = yes, 0 = no)',
   reps_missed: 'Total reps missed vs prescription',
   sets_completed: 'Sets logged',
@@ -24,6 +24,7 @@ export const METRICS = {
   last_set_rir: 'RIR on the last set',
   rir_vs_target: 'Average RIR minus target RIR (+ = felt easier than planned)',
   top_set_weight: 'Heaviest weight used (kg)',
+  load_vs_target_pct: 'Average weight used vs the prescribed weight, in % (− = had to go lighter, e.g. after in-session RIR adjustments)',
   e1rm: 'Best estimated 1RM this session (kg)',
   e1rm_vs_max_pct: 'Best e1RM vs current max, in % (+ = stronger)',
   success_streak: 'Successful sessions in a row (incl. this one)',
@@ -68,7 +69,10 @@ export function computeMetrics(rx, sets, state = {}) {
       repsMissed += Math.max(0, targetReps - Number(s?.reps ?? 0));
     }
   }
-  const allDone = done.length >= targetSets && repsMissed === 0;
+  // A session only counts as completed if the reps were done at the prescribed weight. If in-session RIR
+  // adjustments (or the athlete) dropped the weight, the long-term rule shouldn't add load on top of it.
+  const belowTarget = countsReps && done.slice(0, targetSets).some((s) => s.target_load > 0 && s.weight != null && Number(s.weight) < Number(s.target_load) - 0.01);
+  const allDone = done.length >= targetSets && repsMissed === 0 && !belowTarget;
   // Double progression: with a range like "8-12", progress only once every set reaches the top.
   const range = String(rx.reps ?? '').match(/^\s*(\d+)\s*-\s*(\d+)\s*$/);
   const topReps = range ? Number(range[2]) : targetReps;
@@ -98,6 +102,7 @@ export function computeMetrics(rx, sets, state = {}) {
     last_set_rir: rirs.length ? rirs[rirs.length - 1] : null,
     rir_vs_target: rirs.length && targetRir != null ? avg(rirs) - targetRir : null,
     top_set_weight: weights.length ? Math.max(...weights) : null,
+    load_vs_target_pct: loadVsTarget(done),
     e1rm: bestE1rm,
     e1rm_vs_max_pct: bestE1rm && state.max ? ((bestE1rm - state.max) / state.max) * 100 : null,
     success_streak: allDone ? (state.success_streak || 0) + 1 : 0,
@@ -107,6 +112,13 @@ export function computeMetrics(rx, sets, state = {}) {
     best_result: results.length ? Math.max(...results) : null,
     session_count: (state.session_count || 0) + 1,
   };
+}
+
+function loadVsTarget(sets) {
+  const pairs = sets.filter((s) => Number(s.weight) > 0 && Number(s.target_load) > 0);
+  if (!pairs.length) return null;
+  const avg = pairs.reduce((t, s) => t + (Number(s.weight) - Number(s.target_load)) / Number(s.target_load), 0) / pairs.length;
+  return Math.round(avg * 1000) / 10;
 }
 
 function compare(a, op, b) {

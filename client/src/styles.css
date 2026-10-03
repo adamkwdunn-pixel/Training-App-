@@ -622,3 +622,14 @@ tr.clickable:hover td { background: var(--hover); }
 .examples { display: flex; flex-direction: column; gap: 6px; }
 .example { text-align: left; font: inherit; font-size: 13px; color: var(--muted); background: none; border: 1px dashed var(--line); border-radius: var(--r-md); padding: 8px 12px; cursor: pointer; }
 .example:hover { color: var(--text); }
+
+/* In-session RIR adjustments */
+.autoreg { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.4; border: 1px solid var(--line-soft, rgba(255,255,255,.3)); border-radius: var(--r-md); padding: 10px 12px; }
+.autoreg > strong { font-size: 16px; line-height: 1.2; }
+.autoreg.up { border-color: var(--good); }
+.autoreg.down { border-color: var(--warn); }
+.autoreg.hold > strong { color: var(--good); }
+.autoreg.missing { color: var(--muted); }
+.set-row input.auto-up { border-color: var(--good); }
+.set-row input.auto-down { border-color: var(--warn); }
+.adjust-row td { color: var(--muted); border-bottom: 0; padding-bottom: 0; }
