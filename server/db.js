@@ -363,6 +363,15 @@ function migrate(db) {
   for (const [col, type] of [['sex', 'TEXT'], ['birth_date', 'TEXT'], ['height_cm', 'REAL'], ['must_change_password', 'INTEGER NOT NULL DEFAULT 0'], ['linked_user_id', 'INTEGER']]) {
     if (!cols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
   }
+  // Soreness and stress used to be scored 5 = best; they're now 1 = none/relaxed, 5 = very sore/stressed.
+  // Flip what's already stored, once, so old check-ins keep their meaning (readiness scores are unchanged).
+  if (!db.prepare("SELECT 1 FROM app_settings WHERE key = 'readiness_scale_v2'").get()) {
+    tx(db, () => {
+      db.exec('UPDATE readiness SET soreness = 6 - soreness WHERE soreness BETWEEN 1 AND 5');
+      db.exec('UPDATE readiness SET stress = 6 - stress WHERE stress BETWEEN 1 AND 5');
+      db.prepare("INSERT INTO app_settings (key, value) VALUES ('readiness_scale_v2', '1')").run();
+    });
+  }
   // Sets record the in-session (RIR) weight suggestion the athlete was given.
   const sl = new Set(db.prepare('PRAGMA table_info(set_logs)').all().map((c) => c.name));
   if (!sl.has('suggested_load')) db.exec('ALTER TABLE set_logs ADD COLUMN suggested_load REAL');

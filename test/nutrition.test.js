@@ -88,9 +88,31 @@ test('Jackson-Pollock skinfolds + Siri', () => {
 });
 
 test('readiness score', () => {
-  const all = (v) => ({ sleep_quality: v, energy: v, soreness: v, stress: v, mood: v });
-  assert.equal(readinessScore(all(5)), 100);
-  assert.equal(readinessScore(all(1)), 0);
-  assert.equal(readinessScore(all(3)), 50);
-  assert.equal(readinessScore({ ...all(5), sleep_hours: 5 }), 90);
+  // Soreness and stress read naturally: 1 = none / relaxed, 5 = very sore / very stressed.
+  const best = { sleep_quality: 5, energy: 5, soreness: 1, stress: 1, mood: 5 };
+  const worst = { sleep_quality: 1, energy: 1, soreness: 5, stress: 5, mood: 1 };
+  assert.equal(readinessScore(best), 100);
+  assert.equal(readinessScore(worst), 0);
+  assert.equal(readinessScore({ sleep_quality: 3, energy: 3, soreness: 3, stress: 3, mood: 3 }), 50);
+  assert.equal(readinessScore({ ...best, sleep_hours: 5 }), 90);
+  assert.ok(readinessScore({ ...best, soreness: 5 }) < readinessScore(best)); // very sore lowers readiness
+});
+
+test('old check-ins are converted once to the new soreness/stress scale', async () => {
+  const { openDb } = await import('../server/db.js');
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'db-')), 't.db');
+  let db = openDb(file);
+  db.exec("INSERT INTO users (id, name, email, password_hash, role) VALUES (1, 'A', 'a@x.com', 'x', 'athlete')");
+  db.exec("INSERT INTO readiness (athlete_id, day, soreness, stress) VALUES (1, '2026-01-01', 5, 4)");
+  db.exec("DELETE FROM app_settings WHERE key = 'readiness_scale_v2'"); // as if written by the old version
+  db.close();
+  db = openDb(file);
+  assert.deepEqual({ ...db.prepare('SELECT soreness, stress FROM readiness').get() }, { soreness: 1, stress: 2 });
+  db.close();
+  db = openDb(file); // runs only once
+  assert.deepEqual({ ...db.prepare('SELECT soreness, stress FROM readiness').get() }, { soreness: 1, stress: 2 });
+  db.close();
 });

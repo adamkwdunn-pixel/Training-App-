@@ -69,7 +69,7 @@ test('nutrition, recovery and testing sections', async () => {
   assert.equal(squadN.body_fat_pct, jp.data.body_fat_pct);
 
   // ---- Recovery: readiness, injuries (+ thread), protocols
-  const r = await call('POST', `/athletes/${id}/readiness`, A, { sleep_hours: 8, sleep_quality: 2, energy: 2, soreness: 2, stress: 3, mood: 3 });
+  const r = await call('POST', `/athletes/${id}/readiness`, A, { sleep_hours: 8, sleep_quality: 2, energy: 2, soreness: 4, stress: 3, mood: 3 });
   assert.equal(r.data.score, 35);
   assert.equal((await call('GET', '/inbox', C)).data.low_readiness.length, 1);
   assert.equal((await call('POST', `/athletes/${id}/readiness`, A, { sleep_quality: 2 })).status, 400);

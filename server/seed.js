@@ -145,7 +145,7 @@ export async function seedDemo(db, { coachName, coachEmail, coachPassword } = DE
         const base = [4, 3, 4][i];
         const v = (o) => Math.max(1, Math.min(5, base + o + (d % 4 === 0 ? -1 : 0)));
         await call('POST', `/athletes/${a.user.id}/readiness`, a.token, {
-          day: daysAgo(d), sleep_hours: [8, 6.5, 7.5][i] - (d % 4 === 0 ? 1 : 0), sleep_quality: v(0), energy: v(i === 1 && d === 0 ? -1 : 0), soreness: v(-1), stress: v(1), mood: v(0),
+          day: daysAgo(d), sleep_hours: [8, 6.5, 7.5][i] - (d % 4 === 0 ? 1 : 0), sleep_quality: v(0), energy: v(i === 1 && d === 0 ? -1 : 0), soreness: 6 - v(-1), stress: 6 - v(1), mood: v(0),
         });
       }
     }
