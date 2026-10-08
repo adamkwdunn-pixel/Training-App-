@@ -41,6 +41,7 @@ export default function VideoUploader({ exercises, athleteId, defaultExerciseId,
             <option value="">— Not specific —</option>
             {exercises.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
+          {exerciseId && <span className="tiny muted">Replaces your previous video for this exercise.</span>}
         </label>
       )}
       <label>

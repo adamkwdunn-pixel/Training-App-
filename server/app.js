@@ -1142,6 +1142,8 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       const videoId = Number(info.lastInsertRowid);
       const testId = num(req.body.test_id);
       if (testId) q('UPDATE test_results SET video_id = ? WHERE id = ? AND athlete_id = ?').run(videoId, testId, athlete.id);
+      // Form checks keep only the latest video per exercise (max-lift test videos are kept with their result).
+      else if (exerciseId) replaceOlderVideos(athlete.id, exerciseId, videoId);
       const exName = exerciseId ? q('SELECT name FROM exercises WHERE id = ?').get(exerciseId).name : 'General';
       notify(athlete.coach_id, {
         type: 'form_check', actorId: u.id, link: `/videos/${videoId}`,
@@ -1155,11 +1157,37 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     }
   });
 
+  /**
+   * Delete this athlete's older form-check videos for the exercise (files too). Their feedback moves onto the
+   * newest video so the conversation isn't lost. Videos attached to a max-lift test result are left alone.
+   */
+  function replaceOlderVideos(athleteId, exerciseId, keepId) {
+    const old = q(`SELECT * FROM videos v WHERE v.athlete_id = ? AND v.exercise_id = ? AND v.id <> ?
+      AND NOT EXISTS (SELECT 1 FROM test_results t WHERE t.video_id = v.id)`).all(athleteId, exerciseId, keepId);
+    for (const v of old) {
+      q("UPDATE comments SET target_id = ? WHERE target_type = 'video' AND target_id = ?").run(keepId, v.id);
+      q('DELETE FROM videos WHERE id = ?').run(v.id);
+      fs.rm(path.join(uploadDir, path.basename(v.filename)), () => {});
+    }
+    return old.length;
+  }
+  // One-off tidy-up for videos uploaded before this rule existed.
+  if (!q("SELECT 1 FROM app_settings WHERE key = 'videos_latest_only'").get()) {
+    const latest = q(`SELECT athlete_id, exercise_id, MAX(id) AS id FROM videos v WHERE exercise_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM test_results t WHERE t.video_id = v.id) GROUP BY athlete_id, exercise_id`).all();
+    tx(db, () => {
+      for (const l of latest) replaceOlderVideos(l.athlete_id, l.exercise_id, l.id);
+      q("INSERT INTO app_settings (key, value) VALUES ('videos_latest_only', '1')").run();
+    });
+  }
+
   app.get('/api/videos', (req, res) => {
     const u = requireUser(req);
     const status = ['pending', 'reviewed'].includes(req.query.status) ? req.query.status : null;
     const base = `SELECT v.*, e.name AS exercise_name, u.name AS athlete_name,
-      (SELECT COUNT(*) FROM comments c WHERE c.target_type = 'video' AND c.target_id = v.id) AS comment_count
+      (SELECT COUNT(*) FROM comments c WHERE c.target_type = 'video' AND c.target_id = v.id) AS comment_count,
+      (SELECT c.body FROM comments c WHERE c.target_type = 'video' AND c.target_id = v.id ORDER BY c.id DESC LIMIT 1) AS last_comment,
+      (SELECT au.name FROM comments c JOIN users au ON au.id = c.author_id WHERE c.target_type = 'video' AND c.target_id = v.id ORDER BY c.id DESC LIMIT 1) AS last_comment_author
       FROM videos v JOIN users u ON u.id = v.athlete_id LEFT JOIN exercises e ON e.id = v.exercise_id`;
     let rows;
     if (req.query.athlete_id || u.role === 'athlete') {
@@ -1189,6 +1217,14 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   app.get('/api/videos/:id/file', (req, res) => {
     const v = videoFor(req, req.params.id);
     res.type(v.mime || 'video/mp4');
+    if (req.query.download) {
+      // A readable file name: "Sam Taylor - Back Squat - 2026-10-08.mp4"
+      const meta = q(`SELECT u.name AS athlete, e.name AS exercise FROM videos v JOIN users u ON u.id = v.athlete_id
+        LEFT JOIN exercises e ON e.id = v.exercise_id WHERE v.id = ?`).get(v.id);
+      const ext = path.extname(v.filename) || '.mp4';
+      const name = [meta.athlete, meta.exercise || 'Form check', String(v.created_at).slice(0, 10)].join(' - ').replace(/[\\/:*?"<>|]+/g, '');
+      res.attachment(`${name}${ext}`);
+    }
     res.sendFile(path.join(uploadDir, path.basename(v.filename)));
   });
 

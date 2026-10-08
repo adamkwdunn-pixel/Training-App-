@@ -62,6 +62,7 @@ export function uploadVideo(file, fields, onProgress) {
 }
 
 export const videoSrc = (id) => `/api/videos/${id}/file?token=${encodeURIComponent(getToken() || '')}`;
+export const videoDownload = (id) => `${videoSrc(id)}&download=1`;
 
 /** POST files as multipart form data (field name "files"). */
 export async function uploadFiles(path, files) {

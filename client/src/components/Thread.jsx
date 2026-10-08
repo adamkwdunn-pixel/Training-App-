@@ -3,8 +3,13 @@ import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
 import { useApi } from '../util.js';
 
-/** Feedback thread between coach and athlete, on a workout, a video, or general. */
-export default function Thread({ athleteId, type = 'general', targetId, placeholder }) {
+const utc = (t) => new Date(`${String(t).replace(' ', 'T')}Z`);
+
+/**
+ * Feedback thread between coach and athlete, on a workout, a video, or general.
+ * `since`: when the current video was uploaded — earlier messages were about a previous video.
+ */
+export default function Thread({ athleteId, type = 'general', targetId, placeholder, since }) {
   const { user } = useAuth();
   const qs = new URLSearchParams({ athlete_id: athleteId, target_type: type, ...(targetId ? { target_id: targetId } : {}) });
   const { data, reload } = useApi(`/comments?${qs}`);
@@ -31,14 +36,22 @@ export default function Thread({ athleteId, type = 'general', targetId, placehol
   return (
     <div className="thread">
       {data?.comments?.length === 0 && <p className="muted small">No messages yet.</p>}
-      {data?.comments?.map((c) => (
-        <div key={c.id} className={`bubble ${c.author_id === user.id ? 'mine' : ''} ${c.author_role === 'coach' ? 'coach' : ''}`}>
+      {data?.comments?.map((c, i, all) => (
+        <div key={c.id} style={{ display: 'contents' }}>
+        {since && utc(c.created_at) >= utc(since) && (i === 0 || utc(all[i - 1].created_at) < utc(since)) && i > 0 && (
+          <div className="thread-divider tiny muted">New video uploaded — messages above were about the previous one</div>
+        )}
+        <div className={`bubble ${c.author_id === user.id ? 'mine' : ''} ${c.author_role === 'coach' ? 'coach' : ''}${since && utc(c.created_at) < utc(since) ? ' earlier' : ''}`}>
           <div className="bubble-meta">
             {c.author_name} · {new Date(`${c.created_at.replace(' ', 'T')}Z`).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
           </div>
           <div className="bubble-body">{c.body}</div>
         </div>
+        </div>
       ))}
+      {since && data?.comments?.length > 0 && utc(data.comments.at(-1).created_at) < utc(since) && (
+        <div className="thread-divider tiny muted">New video uploaded — messages above were about the previous one</div>
+      )}
       <form className="thread-form" onSubmit={send}>
         <textarea
           rows={2}

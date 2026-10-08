@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, videoSrc } from '../api.js';
+import { api, videoDownload, videoSrc } from '../api.js';
 import { useAuth } from '../App.jsx';
 import { fmtDate, useApi } from '../util.js';
 import { Badge, Loading, PageHeader } from '../components/Bits.jsx';
 import Thread from '../components/Thread.jsx';
+import Icon from '../components/Icon.jsx';
 
 const RATES = [0.25, 0.5, 1];
 
@@ -51,7 +52,9 @@ export default function VideoView() {
         {RATES.map((r) => <button key={r} className={`btn small ${rate === r ? 'primary' : ''}`} onClick={() => setSpeed(r)}>{r}×</button>)}
         <button className="btn small" onClick={() => step(-1)}>◀ frame</button>
         <button className="btn small" onClick={() => step(1)}>frame ▶</button>
+        <a className="btn small" href={videoDownload(v.id)} download><Icon name="download" size={16} /> Download</a>
       </div>
+      {!v.test_label && v.exercise_id && <p className="tiny muted" style={{ margin: 0 }}>Only the latest {v.exercise_name} video is kept — a new upload replaces this one.</p>}
       {v.test_label && <p className="small"><span className="badge solid">Max test</span> {v.test_label}</p>}
       {v.note && <p className="card flat">“{v.note}”</p>}
       {v.cues && <p className="small muted">Cues: {v.cues}</p>}
@@ -59,7 +62,7 @@ export default function VideoView() {
 
       <section>
         <h2>Feedback</h2>
-        <Thread athleteId={v.athlete_id} type="video" targetId={v.id} placeholder={isCoach ? 'What did you see? Cues for next time…' : 'Reply to your coach…'} />
+        <Thread athleteId={v.athlete_id} type="video" targetId={v.id} since={v.created_at} placeholder={isCoach ? 'What did you see? Cues for next time…' : 'Reply to your coach…'} />
       </section>
 
       <div className="row-actions">
