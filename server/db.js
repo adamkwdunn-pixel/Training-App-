@@ -329,7 +329,9 @@ CREATE TABLE IF NOT EXISTS notification_prefs (
   muted TEXT NOT NULL DEFAULT '[]',         -- JSON list of notification types turned off
   reminder_time TEXT NOT NULL DEFAULT '08:00',
   timezone TEXT,
-  last_reminder_on TEXT
+  last_reminder_on TEXT,
+  photo_day INTEGER NOT NULL DEFAULT 1,     -- weekday for the progress-photo reminder, 0 = Sunday
+  last_photo_on TEXT
 );
 
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -357,12 +359,30 @@ export function openDb(file = process.env.DB_FILE || path.join(DATA_DIR, 'traini
   return db;
 }
 
+/** The big lifts stay as programmed — athletes can swap accessories but not these. */
+// Speed and power work (sprints, jumps, throws) is also kept as programmed unless the coach says otherwise.
+export const isMainLift = (e) => (e.main_lift == null ? isMainLiftName(e.name) || ['speed', 'power'].includes(e.category) : !!e.main_lift);
+export function isMainLiftName(name) {
+  return /\b(squat|deadlift|bench press|power clean|hang clean|clean (and|&) jerk|snatch|overhead press|military press|push press|ohp|chin-?up)\b/i.test(String(name))
+    && !/\b(split squat|goblet|jump squat|pistol|bulgarian|cossack|romanian|stiff[- ]leg|single[- ]leg|rdl)\b/i.test(String(name));
+}
+
 // Bring databases created by earlier versions up to date.
 function migrate(db) {
   const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
   for (const [col, type] of [['sex', 'TEXT'], ['birth_date', 'TEXT'], ['height_cm', 'REAL'], ['must_change_password', 'INTEGER NOT NULL DEFAULT 0'], ['linked_user_id', 'INTEGER']]) {
     if (!cols.has(col)) db.exec(`ALTER TABLE users ADD COLUMN ${col} ${type}`);
   }
+  const npc = new Set(db.prepare('PRAGMA table_info(notification_prefs)').all().map((c) => c.name));
+  if (!npc.has('photo_day')) db.exec('ALTER TABLE notification_prefs ADD COLUMN photo_day INTEGER NOT NULL DEFAULT 1');
+  if (!npc.has('last_photo_on')) db.exec('ALTER TABLE notification_prefs ADD COLUMN last_photo_on TEXT');
+  // Exercises: main movements athletes can't swap, and exercises athletes add themselves.
+  const exc = new Set(db.prepare('PRAGMA table_info(exercises)').all().map((c) => c.name));
+  // main_lift: 1 / 0 set by the coach, or NULL = decided from the name (isMainLiftName).
+  if (!exc.has('main_lift')) db.exec('ALTER TABLE exercises ADD COLUMN main_lift INTEGER');
+  if (!exc.has('created_by')) db.exec('ALTER TABLE exercises ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL');
+  const slc = new Set(db.prepare('PRAGMA table_info(set_logs)').all().map((c) => c.name));
+  if (!slc.has('swapped_from')) db.exec('ALTER TABLE set_logs ADD COLUMN swapped_from INTEGER REFERENCES exercises(id) ON DELETE SET NULL');
   // Soreness and stress used to be scored 5 = best; they're now 1 = none/relaxed, 5 = very sore/stressed.
   // Flip what's already stored, once, so old check-ins keep their meaning (readiness scores are unchanged).
   if (!db.prepare("SELECT 1 FROM app_settings WHERE key = 'readiness_scale_v2'").get()) {

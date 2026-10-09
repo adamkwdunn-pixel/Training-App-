@@ -5,7 +5,7 @@ import { DATA_DIR, openDb } from './db.js';
 import { storageStatus } from './storage.js';
 import { createApp } from './app.js';
 import { seedDemo } from './seed.js';
-import { runReminders } from './notify.js';
+import { runReminders, runPhotoReminders } from './notify.js';
 
 const db = openDb();
 const dist = path.resolve('dist');
@@ -46,6 +46,7 @@ if (process.env.SEED_DEMO === 'true' && (await seedDemo(db))) console.log('Loade
 setInterval(() => {
   try {
     runReminders(db, app.locals.notify);
+    runPhotoReminders(db, app.locals.notify);
   } catch (e) {
     console.error('Reminder run failed', e);
   }

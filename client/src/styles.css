@@ -647,3 +647,12 @@ tr.clickable:hover td { background: var(--hover); }
 .quick-reply { display: flex; gap: 8px; align-items: flex-end; }
 .quick-reply textarea { flex: 1; }
 .fc-last { border-left: 2px solid var(--line-soft); padding-left: 10px; }
+
+/* Accessory swaps */
+.swap-btn { margin-top: 6px; padding-left: 0; }
+.swap-picker { border: 1px dashed var(--line); border-radius: var(--r-md); padding: 12px; gap: 10px; }
+.swap-options { display: flex; flex-direction: column; max-height: 240px; overflow-y: auto; border: 1px solid var(--line-soft); border-radius: var(--r-md); }
+.swap-option { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; background: none; border: 0; border-bottom: 1px solid var(--line-soft); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.swap-option:last-child { border-bottom: 0; }
+.swap-option:hover { background: rgba(255, 255, 255, .05); }
+.link-btn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }

@@ -122,6 +122,17 @@ export default function NotificationSettings() {
           <p className="tiny muted" style={{ margin: 0 }}>Sent once a day at this time ({prefs.timezone || 'your local time'}), only if you haven’t already checked in.</p>
         </div>
       )}
+      {user.role === 'athlete' && !prefs.muted.includes('photo') && (
+        <div className="card stack">
+          <label>
+            Progress photo day
+            <select value={prefs.photo_day ?? 1} onChange={(e) => save({ photo_day: Number(e.target.value) })}>
+              {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => <option key={d} value={i}>{d}</option>)}
+            </select>
+          </label>
+          <p className="tiny muted" style={{ margin: 0 }}>A weekly reminder at your check-in time to take progress photos. They stay on your phone and don’t need uploading. Keep a record of them to see your own visual progress over time.</p>
+        </div>
+      )}
     </>
   );
 }

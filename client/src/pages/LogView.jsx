@@ -52,6 +52,7 @@ export default function LogView() {
       {groups.map((g) => (
         <section key={g.key} className="card">
           <h3>{g.name}</h3>
+          {g.rx.swapped_from_name && <div className="small"><span className="badge">Swapped</span> <span className="muted">in place of {g.rx.swapped_from_name}</span></div>}
           {g.rx.rx_reps && (
             <div className="muted small">
               Prescribed {[g.rx.rx_sets, g.rx.rx_reps].filter(Boolean).join(' × ')}

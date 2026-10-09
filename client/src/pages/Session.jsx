@@ -5,6 +5,7 @@ import { useAuth } from '../App.jsx';
 import { describeRx, today, useApi } from '../util.js';
 import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
+import ExerciseFields from '../components/ExerciseFields.jsx';
 import { nextSetLoad, targetRirOf } from '../../../shared/effort.js';
 
 const draftKey = (a, d) => `session-draft-${a}-${d}`;
@@ -24,21 +25,20 @@ const writeDraft = (k, v) => {
   }
 };
 
+function rowsFor(r) {
+  const n = Math.max(1, Number(r.sets) || 1);
+  const reps = parseInt(r.reps, 10);
+  return Array.from({ length: n }, () => ({
+    done: false,
+    weight: r.target_load ?? (r.load_type === 'fixed' ? r.fixed_load : '') ?? '',
+    reps: Number.isNaN(reps) ? '' : reps,
+    rir: '',
+    time_seconds: '',
+    result: '',
+  }));
+}
 function initialRows(day) {
-  const rows = {};
-  for (const r of day.prescriptions) {
-    const n = Math.max(1, Number(r.sets) || 1);
-    const reps = parseInt(r.reps, 10);
-    rows[r.id] = Array.from({ length: n }, () => ({
-      done: false,
-      weight: r.target_load ?? (r.load_type === 'fixed' ? r.fixed_load : '') ?? '',
-      reps: Number.isNaN(reps) ? '' : reps,
-      rir: '',
-      time_seconds: '',
-      result: '',
-    }));
-  }
-  return rows;
+  return Object.fromEntries(day.prescriptions.map((r) => [r.id, rowsFor(r)]));
 }
 
 /**
@@ -71,6 +71,8 @@ export default function Session() {
   const [rows, setRows] = useState(null);
   const [meta, setMeta] = useState({ performed_on: today(), session_rpe: '', notes: '' });
   const [videos, setVideos] = useState({}); // prescription id -> File
+  const [swaps, setSwaps] = useState({}); // prescription id -> swapped-in prescription (accessories only)
+  const [swapping, setSwapping] = useState(null); // prescription id with the swap picker open
   const [status, setStatus] = useState('');
   const [result, setResult] = useState(null);
   const [timer, setTimer] = useState(null); // { end, total }
@@ -80,17 +82,29 @@ export default function Session() {
     const draft = readDraft(key);
     setRows(draft?.rows || initialRows(data.day));
     if (draft?.meta) setMeta(draft.meta);
+    if (draft?.swaps) setSwaps(draft.swaps);
   }, [data, key]);
 
   useEffect(() => {
-    if (rows) writeDraft(key, { rows, meta });
-  }, [rows, meta, key]);
+    if (rows) writeDraft(key, { rows, meta, swaps });
+  }, [rows, meta, swaps, key]);
 
   if (!data || !rows) return <Loading error={error} />;
   const day = data.day;
   const isCoach = user.role === 'coach';
 
-  const rxById = (id) => day.prescriptions.find((r) => r.id === Number(id));
+  const eff = (r) => swaps[r.id] || r; // the exercise actually being done today
+  const rxById = (id) => { const r = day.prescriptions.find((x) => x.id === Number(id)); return r && eff(r); };
+  const applySwap = (r, swapped) => {
+    setSwaps((cur) => {
+      const next = { ...cur };
+      if (swapped) next[r.id] = swapped;
+      else delete next[r.id];
+      return next;
+    });
+    setRows({ ...rows, [r.id]: rowsFor(swapped || r) });
+    setSwapping(null);
+  };
   const update = (rxId, list) => setRows({ ...rows, [rxId]: reflow(list, rxById(rxId), data.autoreg).list });
   const setSet = (rxId, i, patch) => {
     const list = rows[rxId];
@@ -113,11 +127,12 @@ export default function Session() {
 
   const submit = async () => {
     const sets = [];
-    for (const r of day.prescriptions) {
-      (rows[r.id] || []).forEach((s, i) => {
+    for (const r0 of day.prescriptions) {
+      const r = eff(r0);
+      (rows[r0.id] || []).forEach((s, i) => {
         if (!s.done) return;
         sets.push({
-          prescription_id: r.id, exercise_id: r.exercise_id, set_number: i + 1, target_load: r.target_load,
+          prescription_id: r0.id, exercise_id: r.exercise_id, set_number: i + 1, target_load: r.target_load,
           weight: s.weight, reps: s.reps, rir: s.rir, time_seconds: s.time_seconds, result: s.result,
           suggested_load: s.suggested_load ?? null, adjust_note: s.adjust_note || null,
         });
@@ -136,7 +151,7 @@ export default function Session() {
       const files = Object.entries(videos).filter(([, f]) => f);
       for (let i = 0; i < files.length; i++) {
         const [rxId, file] = files[i];
-        const rx = day.prescriptions.find((r) => String(r.id) === rxId);
+        const rx = rxById(rxId);
         await uploadVideo(file, { athlete_id: athleteId, exercise_id: rx?.exercise_id, workout_log_id: out.id }, (p) =>
           setStatus(`Uploading video ${i + 1}/${files.length} — ${Math.round(p * 100)}%`),
         );
@@ -177,14 +192,19 @@ export default function Session() {
       {day.notes && <p className="card small">{day.notes}</p>}
       {!data.assignment_id && <p className="error">This session isn’t part of an active program for this athlete.</p>}
 
-      {day.prescriptions.map((r) => {
-        const advice = reflow(rows[r.id], r, data.autoreg).advice;
+      {day.prescriptions.map((r0) => {
+        const r = eff(r0);
+        const advice = reflow(rows[r0.id], r, data.autoreg).advice;
         return (
-        <section key={r.id} className="card ex-card">
+        <section key={r0.id} className="card ex-card">
           <div className="ex-head">
             <div className="grow">
               <div>{r.block && <span className="block-tag">{r.block}</span>}<strong>{r.exercise_name}</strong></div>
+              {swaps[r0.id] && <div className="tiny muted">Swapped in for {r0.exercise_name} today · <button type="button" className="link-btn" onClick={() => applySwap(r0, null)}>undo</button></div>}
               <div className="small muted">{describeRx(r)}</div>
+              {r0.swappable && !swaps[r0.id] && swapping !== r0.id && (
+                <button type="button" className="btn small ghost swap-btn" onClick={() => setSwapping(r0.id)}><Icon name="copy" size={14} /> Swap exercise</button>
+              )}
             </div>
             {r.target_load != null && (
               <div className="target" title={r.load_basis}>
@@ -194,6 +214,9 @@ export default function Session() {
             )}
             {r.target_load == null && r.load_basis === 'needs max' && <div className="muted tiny">No max set — pick a weight</div>}
           </div>
+          {swapping === r0.id && (
+            <SwapPicker r0={r0} athleteId={athleteId} onPick={(p) => applySwap(r0, p)} onCancel={() => setSwapping(null)} />
+          )}
           {r.notes && <div className="small">📝 {r.notes}</div>}
           {r.cues && <div className="small muted">Cues: {r.cues}</div>}
           {r.demo_url && <a className="small" href={r.demo_url} target="_blank" rel="noreferrer">Watch demo ↗</a>}
@@ -279,6 +302,84 @@ export default function Session() {
 
       {timer && <RestTimer timer={timer} onClose={() => setTimer(null)} />}
     </>
+  );
+}
+
+/**
+ * Pick a substitute for an accessory: from the coach's library (same category first), or add a new exercise.
+ * Main movements can't be picked. Same sets, reps and effort target; the load comes from the new exercise's history.
+ */
+function SwapPicker({ r0, athleteId, onPick, onCancel }) {
+  const { data } = useApi('/exercises');
+  const [q, setQ] = useState('');
+  const [adding, setAdding] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const pick = async (exerciseId) => {
+    setBusy(true);
+    setErr('');
+    try {
+      const { prescription } = await api(`/athletes/${athleteId}/rx/${r0.id}/swap?exercise_id=${exerciseId}`);
+      onPick(prescription);
+    } catch (e) {
+      setErr(e.message);
+      setBusy(false);
+    }
+  };
+  const add = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr('');
+    try {
+      const { exercise } = await api('/exercises', { method: 'POST', body: adding });
+      if (exercise.main) throw new Error(`${exercise.name} is a main movement, so it can’t be used as a swap`);
+      await pick(exercise.id);
+    } catch (e2) {
+      setErr(e2.message);
+      setBusy(false);
+    }
+  };
+
+  const options = (data?.exercises || [])
+    .filter((x) => !x.main && x.id !== r0.exercise_id && x.name.toLowerCase().includes(q.trim().toLowerCase()))
+    .sort((a, b) => (a.category === r0.category ? 0 : 1) - (b.category === r0.category ? 0 : 1) || a.name.localeCompare(b.name));
+
+  return (
+    <div className="swap-picker stack">
+      <div className="inline-form" style={{ alignItems: 'center' }}>
+        <strong className="grow small">Swap {r0.exercise_name} for today</strong>
+        <button type="button" className="btn small ghost" onClick={onCancel}>Cancel</button>
+      </div>
+      {adding ? (
+        <form className="stack" onSubmit={add}>
+          <ExerciseFields value={adding} onChange={setAdding} cuesLabel="Notes / cues (optional)" />
+          <div className="row-actions" style={{ marginTop: 0 }}>
+            <button className="btn primary small" disabled={busy || !adding.name.trim()}>{busy ? 'Adding…' : 'Add & swap'}</button>
+            <button type="button" className="btn ghost small" onClick={() => setAdding(null)}>Back</button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <input className="search" placeholder="Search exercises…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          <div className="swap-options">
+            {!data && <p className="muted small">Loading…</p>}
+            {options.slice(0, 40).map((x) => (
+              <button type="button" key={x.id} className="swap-option" disabled={busy} onClick={() => pick(x.id)}>
+                <span>{x.name}</span>
+                <span className="tiny muted">{x.category === r0.category ? 'similar' : x.category}</span>
+              </button>
+            ))}
+            {data && !options.length && <p className="muted small">No match{q ? ` for “${q}”` : ''}.</p>}
+          </div>
+          <button type="button" className="btn small" onClick={() => setAdding({ name: q.trim(), category: r0.category || 'strength', metric: r0.metric || 'load', demo_url: '', cues: '' })}>
+            <Icon name="plus" size={14} /> Add a new exercise{q.trim() ? ` “${q.trim()}”` : ''}
+          </button>
+          <p className="tiny muted" style={{ margin: 0 }}>Same sets, reps and effort as programmed. Your coach sees what you swapped.</p>
+        </>
+      )}
+      {err && <p className="error">{err}</p>}
+    </div>
   );
 }
 

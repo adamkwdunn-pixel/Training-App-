@@ -17,6 +17,7 @@ export const TYPES = {
   athlete: {
     session: 'Session completed summary',
     reminder: 'Daily check-in reminder',
+    photo: 'Weekly progress photo reminder',
     comment: 'Coach feedback and messages',
     program: 'New program or protocol assigned',
     test: 'Testing results recorded or verified by coach',
@@ -57,7 +58,7 @@ export function webPushSender(db) {
 
 export function prefsOf(db, userId) {
   const row = db.prepare('SELECT * FROM notification_prefs WHERE user_id = ?').get(userId);
-  return row ? { ...row, muted: JSON.parse(row.muted) } : { user_id: userId, muted: [], reminder_time: '08:00', timezone: null, last_reminder_on: null };
+  return row ? { ...row, muted: JSON.parse(row.muted) } : { user_id: userId, muted: [], reminder_time: '08:00', timezone: null, last_reminder_on: null, photo_day: 1, last_photo_on: null };
 }
 
 /**
@@ -122,6 +123,30 @@ export function runReminders(db, notify, now = new Date()) {
   return sent;
 }
 
+export const PHOTO_REMINDER = {
+  title: 'Weekly progress photo 📸',
+  body: 'Take your progress photos today: front, side and back, in the same spot, light and time of day as last week. '
+    + 'They stay on your phone and don’t need uploading. Keep a record of these pictures to show your own visual progress over time.',
+};
+
+/** Once a week, on the athlete's chosen day at their reminder time: take a progress photo (kept on their own phone). */
+export function runPhotoReminders(db, notify, now = new Date()) {
+  const athletes = db.prepare("SELECT id FROM users WHERE role = 'athlete' AND coach_id IS NOT NULL").all();
+  let sent = 0;
+  for (const { id } of athletes) {
+    const p = prefsOf(db, id);
+    if (p.muted.includes('photo')) continue;
+    const { date, time } = localNow(p.timezone, now);
+    const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
+    if (weekday !== Number(p.photo_day ?? 1) || time < p.reminder_time || p.last_photo_on === date) continue;
+    db.prepare(`INSERT INTO notification_prefs (user_id, last_photo_on) VALUES (?, ?)
+      ON CONFLICT (user_id) DO UPDATE SET last_photo_on = excluded.last_photo_on`).run(id, date);
+    notify(id, { type: 'photo', ...PHOTO_REMINDER, link: '/nutrition/weight?photo=1' });
+    sent++;
+  }
+  return sent;
+}
+
 export function registerNotifications(app, { db, q, fail, str, requireUser, notify }) {
   app.get('/api/notifications', (req, res) => {
     const u = requireUser(req);
@@ -147,7 +172,7 @@ export function registerNotifications(app, { db, q, fail, str, requireUser, noti
     const u = requireUser(req);
     const p = prefsOf(db, u.id);
     res.json({
-      prefs: { muted: p.muted, reminder_time: p.reminder_time, timezone: p.timezone },
+      prefs: { muted: p.muted, reminder_time: p.reminder_time, timezone: p.timezone, photo_day: p.photo_day ?? 1 },
       types: TYPES[u.role],
       devices: q('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(u.id).n,
     });
@@ -168,11 +193,14 @@ export function registerNotifications(app, { db, q, fail, str, requireUser, noti
         /* ignore unknown zones */
       }
     }
-    q(`INSERT INTO notification_prefs (user_id, muted, reminder_time, timezone) VALUES (?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET muted = excluded.muted, reminder_time = excluded.reminder_time, timezone = excluded.timezone`).run(
-      u.id, JSON.stringify(muted), time, tz,
+    const photoDay = Number.isInteger(Number(b.photo_day)) && b.photo_day !== '' && b.photo_day != null && Number(b.photo_day) >= 0 && Number(b.photo_day) <= 6
+      ? Number(b.photo_day) : (cur.photo_day ?? 1);
+    q(`INSERT INTO notification_prefs (user_id, muted, reminder_time, timezone, photo_day) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (user_id) DO UPDATE SET muted = excluded.muted, reminder_time = excluded.reminder_time, timezone = excluded.timezone,
+         photo_day = excluded.photo_day`).run(
+      u.id, JSON.stringify(muted), time, tz, photoDay,
     );
-    res.json({ prefs: { muted, reminder_time: time, timezone: tz } });
+    res.json({ prefs: { muted, reminder_time: time, timezone: tz, photo_day: photoDay } });
   });
 
   // ---------- push subscriptions (one per device / browser) ----------

@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { DATA_DIR, UPLOAD_DIR, tx } from './db.js';
+import { DATA_DIR, UPLOAD_DIR, tx, isMainLift } from './db.js';
 import { storageStatus } from './storage.js';
 import { sleepDebt, DEBT_WINDOW_DAYS } from '../shared/sleep.js';
 import { ageFrom, weeklyRate, withTrend } from '../shared/nutrition.js';
@@ -421,10 +421,13 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   }
 
   // ---------- exercises ----------
+  const withMain = (e) => e && ({ ...e, main: isMainLift(e) });
   app.get('/api/exercises', (req, res) => {
     const u = requireUser(req);
-    res.json({ exercises: q('SELECT * FROM exercises WHERE coach_id = ? ORDER BY category, name').all(coachIdOf(u)) });
+    res.json({ exercises: q(`SELECT x.*, cb.name AS created_by_name FROM exercises x LEFT JOIN users cb ON cb.id = x.created_by AND cb.role = 'athlete'
+      WHERE x.coach_id = ? ORDER BY x.category, x.name`).all(coachIdOf(u)).map(withMain) });
   });
+  const mainFlag = (b) => (b.main_lift === undefined || b.main_lift === null || b.main_lift === '' ? null : b.main_lift ? 1 : 0);
   const exerciseFields = (b) => {
     if (!b.name) fail(400, 'Exercise name is required');
     return [
@@ -435,16 +438,29 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       str(b.cues),
     ];
   };
+  // Coaches add to their library; athletes can too (e.g. a substitute accessory mid-session). Athlete-added
+  // exercises are never main movements, and a name already in the library is reused rather than duplicated.
   app.post('/api/exercises', (req, res) => {
-    const coach = requireCoach(req);
-    const info = q('INSERT INTO exercises (name, category, metric, demo_url, cues, coach_id) VALUES (?, ?, ?, ?, ?, ?)').run(...exerciseFields(req.body || {}), coach.id);
-    res.status(201).json({ exercise: q('SELECT * FROM exercises WHERE id = ?').get(info.lastInsertRowid) });
+    const u = requireUser(req);
+    const coachId = coachIdOf(u);
+    if (!coachId) fail(400, 'Join a coach first');
+    const fields = exerciseFields(req.body || {});
+    const existing = q('SELECT * FROM exercises WHERE coach_id = ? AND lower(trim(name)) = lower(?)').get(coachId, fields[0]);
+    if (existing) return res.status(200).json({ exercise: withMain(existing), existing: true });
+    const athlete = u.role === 'athlete';
+    const info = q('INSERT INTO exercises (name, category, metric, demo_url, cues, coach_id, main_lift, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      ...fields, coachId, athlete ? 0 : mainFlag(req.body || {}), athlete ? u.id : null,
+    );
+    res.status(201).json({ exercise: withMain(q('SELECT * FROM exercises WHERE id = ?').get(info.lastInsertRowid)) });
   });
   app.put('/api/exercises/:id', (req, res) => {
     const coach = requireCoach(req);
     const ex = ownedBy('exercises', req.params.id, coach.id, 'Exercise');
-    q('UPDATE exercises SET name = ?, category = ?, metric = ?, demo_url = ?, cues = ? WHERE id = ?').run(...exerciseFields(req.body || {}), ex.id);
-    res.json({ exercise: q('SELECT * FROM exercises WHERE id = ?').get(ex.id) });
+    const b = req.body || {};
+    q('UPDATE exercises SET name = ?, category = ?, metric = ?, demo_url = ?, cues = ?, main_lift = ? WHERE id = ?').run(
+      ...exerciseFields(b), b.main_lift === undefined ? ex.main_lift : mainFlag(b), ex.id,
+    );
+    res.json({ exercise: withMain(q('SELECT * FROM exercises WHERE id = ?').get(ex.id)) });
   });
   app.delete('/api/exercises/:id', (req, res) => {
     const coach = requireCoach(req);
@@ -906,23 +922,46 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   });
 
   // ---------- athlete plan & session targets ----------
+  /** Planned load and "last time" for one prescription and athlete (r.exercise_id may be a swapped-in exercise). */
+  function withTargets(athlete, r) {
+    const state = getState(athlete.id, r.exercise_id);
+    const t = r.load_type === 'bodyweight' ? { load: null, basis: 'bodyweight' } : targetLoad(r, state, athlete.load_increment);
+    r.target_load = t.load;
+    r.load_basis = t.basis;
+    r.current_max = state.max;
+    const last = q(`SELECT s.weight, s.reps, s.rir, s.time_seconds, s.result, w.performed_on FROM set_logs s
+      JOIN workout_logs w ON w.id = s.workout_log_id WHERE w.athlete_id = ? AND s.exercise_id = ?
+      ORDER BY w.performed_on DESC, w.id DESC, s.set_number LIMIT 12`).all(athlete.id, r.exercise_id);
+    const lastDate = last[0]?.performed_on;
+    r.last_time = last.filter((s) => s.performed_on === lastDate);
+    return r;
+  }
+  const RX_SELECT = `SELECT r.*, e.name AS exercise_name, e.category, e.metric, e.demo_url, e.cues, e.main_lift
+    FROM prescriptions r JOIN exercises e ON e.id = r.exercise_id`;
   function dayWithTargets(athlete, day) {
-    const rxs = q(`SELECT r.*, e.name AS exercise_name, e.category, e.metric, e.demo_url, e.cues
-      FROM prescriptions r JOIN exercises e ON e.id = r.exercise_id WHERE r.day_id = ? ORDER BY r.position, r.id`).all(day.id);
+    const rxs = q(`${RX_SELECT} WHERE r.day_id = ? ORDER BY r.position, r.id`).all(day.id);
     for (const r of rxs) {
-      const state = getState(athlete.id, r.exercise_id);
-      const t = r.load_type === 'bodyweight' ? { load: null, basis: 'bodyweight' } : targetLoad(r, state, athlete.load_increment);
-      r.target_load = t.load;
-      r.load_basis = t.basis;
-      r.current_max = state.max;
-      const last = q(`SELECT s.weight, s.reps, s.rir, s.time_seconds, s.result, w.performed_on FROM set_logs s
-        JOIN workout_logs w ON w.id = s.workout_log_id WHERE w.athlete_id = ? AND s.exercise_id = ?
-        ORDER BY w.performed_on DESC, w.id DESC, s.set_number LIMIT 12`).all(athlete.id, r.exercise_id);
-      const lastDate = last[0]?.performed_on;
-      r.last_time = last.filter((s) => s.performed_on === lastDate);
+      withTargets(athlete, r);
+      r.swappable = !isMainLift({ name: r.exercise_name, main_lift: r.main_lift, category: r.category });
     }
     return { ...day, prescriptions: rxs };
   }
+
+  // Swap an accessory for today's session: the same sets/reps/effort, with the other exercise's own load and history.
+  app.get('/api/athletes/:id/rx/:rxId/swap', (req, res) => {
+    const a = athleteFor(req, req.params.id);
+    const r = q(`${RX_SELECT} WHERE r.id = ?`).get(Number(req.params.rxId)) || fail(404, 'Exercise not found in this session');
+    const day = q('SELECT * FROM program_days WHERE id = ?').get(r.day_id);
+    if (!q('SELECT 1 FROM assignments WHERE athlete_id = ? AND program_id = ?').get(a.id, day.program_id)) fail(403, 'This session isn’t in your program');
+    if (isMainLift({ name: r.exercise_name, main_lift: r.main_lift, category: r.category })) fail(400, `${r.exercise_name} is a main movement, so it stays as programmed`);
+    const ex = ownedBy('exercises', req.query.exercise_id, a.coach_id, 'Exercise');
+    if (isMainLift(ex)) fail(400, `${ex.name} is a main movement, so it can’t be used as a swap`);
+    const swapped = withTargets(a, {
+      ...r, exercise_id: ex.id, exercise_name: ex.name, category: ex.category, metric: ex.metric, demo_url: ex.demo_url, cues: ex.cues,
+      swapped_from: r.exercise_id, swapped_from_name: r.exercise_name, swappable: true,
+    });
+    res.json({ prescription: swapped });
+  });
 
   app.get('/api/athletes/:id/plan', (req, res) => {
     const a = athleteFor(req, req.params.id);
@@ -980,22 +1019,34 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       const groups = new Map();
       sets.forEach((s, i) => {
         const rx = s.prescription_id && day ? q('SELECT * FROM prescriptions WHERE id = ? AND day_id = ?').get(Number(s.prescription_id), day.id) : null;
-        const exerciseId = rx ? rx.exercise_id : Number(s.exercise_id);
+        let exerciseId = rx ? rx.exercise_id : Number(s.exercise_id);
+        let swappedFrom = null;
+        if (rx && s.exercise_id && Number(s.exercise_id) !== rx.exercise_id) {
+          // Athlete swapped an accessory for something else today. Main movements must stay as programmed.
+          const orig = q('SELECT * FROM exercises WHERE id = ?').get(rx.exercise_id);
+          if (isMainLift(orig)) fail(400, `${orig.name} is a main movement, so it can’t be swapped`);
+          const sub = ownedBy('exercises', s.exercise_id, coachId, 'Exercise');
+          if (isMainLift(sub)) fail(400, `${sub.name} is a main movement, so it can’t be used as a swap`);
+          exerciseId = sub.id;
+          swappedFrom = orig.id;
+        }
         if (!rx) ownedBy('exercises', exerciseId, coachId, 'Exercise');
         q(`INSERT INTO set_logs (workout_log_id, prescription_id, exercise_id, set_number, target_load, weight, reps, rir, time_seconds, result, notes,
-             suggested_load, adjust_note)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+             suggested_load, adjust_note, swapped_from)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           logId, rx?.id ?? null, exerciseId, num(s.set_number) || i + 1, num(s.target_load), num(s.weight), num(s.reps),
-          num(s.rir), num(s.time_seconds), num(s.result), str(s.notes), num(s.suggested_load), (str(s.adjust_note) || '').slice(0, 200) || null,
+          num(s.rir), num(s.time_seconds), num(s.result), str(s.notes), num(s.suggested_load), (str(s.adjust_note) || '').slice(0, 200) || null, swappedFrom,
         );
-        const key = rx ? `rx${rx.id}` : `ex${exerciseId}`;
-        if (!groups.has(key)) groups.set(key, { rx, exerciseId, sets: [] });
+        const key = rx ? `rx${rx.id}:${exerciseId}` : `ex${exerciseId}`;
+        if (!groups.has(key)) groups.set(key, { rx, exerciseId, swappedFrom, sets: [] });
         groups.get(key).sets.push(s);
       });
 
       const events = [];
+      const swaps = [];
       for (const g of groups.values()) {
         const ex = q('SELECT * FROM exercises WHERE id = ?').get(g.exerciseId);
+        if (g.swappedFrom) swaps.push(`${q('SELECT name FROM exercises WHERE id = ?').get(g.swappedFrom).name} → ${ex.name}`);
         const rx = g.rx ? { ...g.rx, metric: ex.metric } : { sets: g.sets.length, reps: null, load_type: 'none', metric: ex.metric };
         const state = getState(athlete.id, g.exerciseId);
         const metrics = computeMetrics(rx, g.sets.map((s) => ({
@@ -1022,7 +1073,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
           saveState(athlete.id, g.exerciseId, { ...state, success_streak: metrics.success_streak, fail_streak: metrics.fail_streak, session_count: metrics.session_count });
         }
       }
-      return { id: logId, events };
+      return { id: logId, events, swaps };
     });
 
     const log = q('SELECT title, session_rpe FROM workout_logs WHERE id = ?').get(result.id);
@@ -1030,7 +1081,8 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     const changes = result.events.map((e) => `${e.exercise}: ${e.summary}`);
     notify(athlete.coach_id, {
       type: 'session', title: `${athlete.name} completed ${log.title}`, actorId: u.id, link,
-      body: [`${sets.length} sets`, log.session_rpe != null && `session RPE ${log.session_rpe}`, clip(b.notes, 80) && `“${clip(b.notes, 80)}”`].filter(Boolean).join(' · '),
+      body: [`${sets.length} sets`, log.session_rpe != null && `session RPE ${log.session_rpe}`, result.swaps.length && `swapped ${result.swaps.join(', ')}`,
+        clip(b.notes, 80) && `“${clip(b.notes, 80)}”`].filter(Boolean).join(' · '),
     });
     for (const e of result.events.filter((x) => x.summary.includes('⚑'))) {
       notify(athlete.coach_id, { type: 'flag', title: `⚑ ${athlete.name} — ${e.exercise}`, body: e.summary, link, actorId: u.id });
@@ -1069,8 +1121,10 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
 
   app.get('/api/logs/:id', (req, res) => {
     const log = logFor(req, req.params.id);
-    const sets = q(`SELECT s.*, e.name AS exercise_name, e.metric, r.reps AS rx_reps, r.sets AS rx_sets, r.load_type, r.percent, r.rir AS rx_rir, r.rpe AS rx_rpe, r.target AS rx_target
+    const sets = q(`SELECT s.*, e.name AS exercise_name, e.metric, r.reps AS rx_reps, r.sets AS rx_sets, r.load_type, r.percent, r.rir AS rx_rir, r.rpe AS rx_rpe, r.target AS rx_target,
+        sf.name AS swapped_from_name
       FROM set_logs s JOIN exercises e ON e.id = s.exercise_id LEFT JOIN prescriptions r ON r.id = s.prescription_id
+      LEFT JOIN exercises sf ON sf.id = s.swapped_from
       WHERE s.workout_log_id = ? ORDER BY s.id`).all(log.id);
     for (const s of sets) s.e1rm = s.weight && s.reps ? Math.round(estimate1RM(s.weight, s.reps, s.rir ?? 0) * 10) / 10 : null;
     const events = q(`SELECT ev.*, e.name AS exercise_name FROM progression_events ev JOIN exercises e ON e.id = ev.exercise_id

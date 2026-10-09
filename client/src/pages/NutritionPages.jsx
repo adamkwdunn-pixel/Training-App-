@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../App.jsx';
 import { fmtDate, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
@@ -15,7 +15,34 @@ export function MyTargets() {
 }
 export function MyWeight() {
   const { user } = useAuth();
-  return (<><PageHeader title="Bodyweight" sub="Daily weigh-ins and your trend" /><Bodyweight athleteId={user.id} /></>);
+  const [params] = useSearchParams();
+  const photo = params.has('photo');
+  return (
+    <>
+      <PageHeader title="Bodyweight" sub="Daily weigh-ins and your trend" />
+      {photo && <PhotoTips />}
+      <Bodyweight athleteId={user.id} />
+    </>
+  );
+}
+
+/** Shown when the athlete opens the weekly progress-photo reminder. Photos stay on their own phone. */
+function PhotoTips() {
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <h3 style={{ margin: 0 }}>📸 Weekly progress photos</h3>
+      <p className="small" style={{ margin: 0 }}>
+        Keep a record of these pictures to show your own visual progress over time. They stay on your phone and don’t need uploading.
+      </p>
+      <ul className="small muted" style={{ margin: 0, paddingLeft: '1.1rem' }}>
+        <li>Front, side and back, standing relaxed.</li>
+        <li>Same spot, same lighting, same time of day (first thing in the morning works best).</li>
+        <li>Same clothing, camera at chest height, phone on a timer if you can.</li>
+        <li>Save them in one album so you can compare month to month.</li>
+        <li>Log your weight below while you’re at it.</li>
+      </ul>
+    </div>
+  );
 }
 export function MyBodyFat() {
   const { user } = useAuth();

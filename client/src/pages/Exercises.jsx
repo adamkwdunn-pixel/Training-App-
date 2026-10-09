@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { api } from '../api.js';
 import { CATEGORIES, METRIC_LABELS, useApi } from '../util.js';
+import ExerciseFields from '../components/ExerciseFields.jsx';
 import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 
-const blank = { name: '', category: 'strength', metric: 'load', demo_url: '', cues: '' };
+const blank = { name: '', category: 'strength', metric: 'load', demo_url: '', cues: '', main: false };
 
 export default function Exercises() {
   const { data, error, reload } = useApi('/exercises');
@@ -16,8 +17,9 @@ export default function Exercises() {
     e.preventDefault();
     setErr('');
     try {
-      if (editing.id) await api(`/exercises/${editing.id}`, { method: 'PUT', body: editing });
-      else await api('/exercises', { method: 'POST', body: editing });
+      const body = { ...editing, main_lift: editing.main ? 1 : 0 };
+      if (editing.id) await api(`/exercises/${editing.id}`, { method: 'PUT', body });
+      else await api('/exercises', { method: 'POST', body });
       setEditing(null);
       reload();
     } catch (e2) {
@@ -40,29 +42,21 @@ export default function Exercises() {
 
   return (
     <>
-      <PageHeader title="Exercise library">
+      <PageHeader title="Exercise library" sub="“Main” movements stay as programmed; athletes can swap the rest mid-session">
         <button className="btn primary" onClick={() => setEditing({ ...blank })}><Icon name="plus" /> New</button>
       </PageHeader>
 
       {editing && (
         <form className="card stack" onSubmit={save}>
-          <div className="grid2">
-            <label>Name<input required value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} /></label>
-            <label>
-              Category
-              <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
-                {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </label>
-            <label>
-              Athletes record
-              <select value={editing.metric} onChange={(e) => setEditing({ ...editing, metric: e.target.value })}>
-                {Object.entries(METRIC_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </label>
-            <label>Demo video link<input type="url" value={editing.demo_url || ''} onChange={(e) => setEditing({ ...editing, demo_url: e.target.value })} placeholder="https://youtube.com/…" /></label>
-          </div>
-          <label>Coaching cues<textarea rows={2} value={editing.cues || ''} onChange={(e) => setEditing({ ...editing, cues: e.target.value })} /></label>
+          <ExerciseFields value={editing} onChange={setEditing} />
+          <label className="row switch-row" style={{ padding: 0, border: 0 }}>
+            <span className="grow">
+              <strong className="small">Main movement</strong>
+              <span className="tiny muted" style={{ display: 'block' }}>Athletes can’t swap it out mid-session. Big lifts and speed/power work start as main; accessories can be swapped.</span>
+            </span>
+            <input type="checkbox" className="switch" checked={!!editing.main} onChange={(e) => setEditing({ ...editing, main: e.target.checked })} />
+          </label>
+          {editing.created_by_name && <p className="tiny muted" style={{ margin: 0 }}>Added by {editing.created_by_name} as a swap.</p>}
           {err && <p className="error">{err}</p>}
           <div className="row-actions">
             <button className="btn primary">Save</button>
@@ -85,6 +79,8 @@ export default function Exercises() {
                 <button key={e.id} className="row" onClick={() => setEditing({ ...e })}>
                   <div className="grow">
                     <strong>{e.name}</strong> <span className="muted small">· {METRIC_LABELS[e.metric]}</span>
+                    {e.main && <span className="badge" style={{ marginLeft: 6 }}>Main</span>}
+                    {e.created_by_name && <span className="muted tiny"> · added by {e.created_by_name}</span>}
                     {e.cues && <div className="muted small clamp">{e.cues}</div>}
                   </div>
                 </button>
