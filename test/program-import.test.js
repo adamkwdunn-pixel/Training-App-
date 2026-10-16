@@ -9,8 +9,8 @@ import { ImportError } from '../server/lib/program-import.js';
 
 const seen = [];
 // Stand-in for Claude: returns what the real importer would after parsing the structured output.
-const programImporter = async (files, library) => {
-  seen.push({ files: files.map((f) => [f.originalname, f.mimetype]), library });
+const programImporter = async (files, library, instructions) => {
+  seen.push({ files: files.map((f) => [f.originalname, f.mimetype]), library, instructions });
   if (files[0].originalname === 'cat.png') throw new ImportError(422, 'That doesn’t look like a training program.');
   const ex = (o) => ({ library_match: '', category: 'strength', metric: 'load', block: '', sets: 3, reps: '5', load_type: 'none', percent: null, rir: null, rpe: null, fixed_load: null, target: '', rest_seconds: null, tempo: '', notes: '', ...o });
   return {
@@ -36,8 +36,9 @@ const call = async (method, url, token, body) => {
   const res = await fetch(base + url, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   return { status: res.status, data: await res.json().catch(() => null) };
 };
-const upload = async (token, files) => {
+const upload = async (token, files, instructions) => {
   const fd = new FormData();
+  if (instructions) fd.append('instructions', instructions);
   for (const [name, type] of files) fd.append('files', new Blob([Buffer.from('%PDF-1.4 fake')], { type }), name);
   const res = await fetch(`${base}/programs/import`, { method: 'POST', headers: token ? { authorization: `Bearer ${token}` } : {}, body: fd });
   return { status: res.status, data: await res.json().catch(() => null) };
@@ -53,9 +54,10 @@ test('import a program from a PDF: preview draft, then create it', async () => {
   assert.equal((await upload(C, [['notes.txt', 'text/plain']])).status, 400); // unsupported types are dropped
   assert.equal((await upload(C, [['cat.png', 'image/png']])).status, 422);
 
-  const r = await upload(C, [['block.pdf', 'application/pdf'], ['page2.jpg', 'image/jpeg']]);
+  const r = await upload(C, [['block.pdf', 'application/pdf'], ['page2.jpg', 'image/jpeg']], 'Only use the no-game-week program; ignore game weeks.');
   assert.equal(r.status, 200, JSON.stringify(r.data));
   assert.deepEqual(seen.at(-1).files, [['block.pdf', 'application/pdf'], ['page2.jpg', 'image/jpeg']]);
+  assert.equal(seen.at(-1).instructions, 'Only use the no-game-week program; ignore game weeks.');
   const d = r.data.draft;
   assert.equal(d.weeks.length, 4); // 3 repeated + deload
   assert.deepEqual(d.weeks.map((w) => w.week), [1, 2, 3, 4]);

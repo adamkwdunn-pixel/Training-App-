@@ -65,9 +65,10 @@ export const videoSrc = (id) => `/api/videos/${id}/file?token=${encodeURICompone
 export const videoDownload = (id) => `${videoSrc(id)}&download=1`;
 
 /** POST files as multipart form data (field name "files"). */
-export async function uploadFiles(path, files) {
+export async function uploadFiles(path, files, fields = {}) {
   const fd = new FormData();
   for (const f of files) fd.append('files', f);
+  for (const [k, v] of Object.entries(fields)) if (v != null && v !== '') fd.append(k, v);
   const token = getToken();
   const res = await fetch(`/api${path}`, { method: 'POST', headers: token ? { authorization: `Bearer ${token}` } : {}, body: fd });
   const data = await res.json().catch(() => ({}));

@@ -26,6 +26,7 @@ export default function ProgramImport({ enabled }) {
   const [err, setErr] = useState('');
   const [draft, setDraft] = useState(null);
   const [open, setOpen] = useState(1);
+  const [instructions, setInstructions] = useState('');
 
   const add = (list) => {
     setErr('');
@@ -40,7 +41,7 @@ export default function ProgramImport({ enabled }) {
     if (files.reduce((t, f) => t + f.size, 0) > 30 * MB) return setErr('Those files add up to more than 30 MB — try fewer pages at once.');
     setBusy(true);
     try {
-      const { draft: d } = await uploadFiles('/programs/import', files);
+      const { draft: d } = await uploadFiles('/programs/import', files, { instructions: instructions.trim() });
       setDraft(d);
       setOpen(1);
     } catch (e) {
@@ -60,7 +61,8 @@ export default function ProgramImport({ enabled }) {
       setBusy(false);
     }
   };
-  const reset = () => { setDraft(null); setFiles([]); setErr(''); };
+  const reset = () => { setDraft(null); setFiles([]); setInstructions(''); setErr(''); };
+  const reread = () => { setDraft(null); setErr(''); }; // keep the files and instructions, change them and read again
 
   if (!enabled) {
     return (
@@ -79,6 +81,7 @@ export default function ProgramImport({ enabled }) {
           <h3 className="grow" style={{ margin: 0 }}>Check the import</h3>
           <Badge tone="info">{draft.weeks.length} weeks · {sessions} sessions</Badge>
         </div>
+        {instructions.trim() && <p className="tiny muted" style={{ margin: 0 }}>Read with your instructions: “{instructions.trim()}”</p>}
         <label>Program name<input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
         <label>Description<textarea rows={2} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></label>
         {draft.warnings.length > 0 && (
@@ -118,6 +121,7 @@ export default function ProgramImport({ enabled }) {
         {err && <p className="error">{err}</p>}
         <div className="row-actions" style={{ marginTop: 0 }}>
           <button className="btn primary" disabled={busy || !draft.name.trim()} onClick={create}>{busy ? 'Creating…' : 'Create program'}</button>
+          <button className="btn ghost" disabled={busy} onClick={reread}>Change instructions & re-read</button>
           <button className="btn ghost" disabled={busy} onClick={reset}>Discard</button>
         </div>
       </div>
@@ -153,6 +157,19 @@ export default function ProgramImport({ enabled }) {
             </div>
           ))}
         </div>
+      )}
+      {files.length > 0 && (
+        <label>
+          Instructions for reading this program <span className="muted">(optional)</span>
+          <textarea
+            rows={3}
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            disabled={busy}
+            placeholder="e.g. Only use the no-game-week program and ignore the game-week sessions. Skip the warm-up page. Call the sessions Lower, Upper and Power."
+          />
+          <span className="tiny muted">Tell it which parts to use and which to leave out. It follows these over its own reading.</span>
+        </label>
       )}
       {err && <p className="error">{err}</p>}
       {files.length > 0 && (

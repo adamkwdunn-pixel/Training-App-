@@ -48,6 +48,7 @@ Read every page. Produce weeks in order, each with its sessions (days) in order,
 - Supersets or labelled blocks (A1/A2) go in block.
 - For each exercise, if it is clearly the same as one in the coach's library, copy that library name exactly into library_match; otherwise leave library_match empty.
 - Never invent exercises, sets or loads. If something is unreadable or ambiguous, make the best reasonable reading and add a short warning.
+- The coach may add instructions about which parts to use (e.g. one of several versions of a week, such as a game week vs a no-game week). Follow them: leave out everything they say to discard, and don't mix versions they asked to keep separate.
 - If the files are not a training program, set is_program to false.
 
 The coach's exercise library:
@@ -66,11 +67,15 @@ export function createProgramImporter(env = process.env) {
   if (!env.ANTHROPIC_API_KEY) return null;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-  return async function importProgram(files, library) {
+  /** instructions: the coach's own directions, e.g. "only use the no-game-week sessions; ignore the game-week plan". */
+  return async function importProgram(files, library, instructions = '') {
     const content = files.map((f) => (f.mimetype === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.buffer.toString('base64') } }
       : { type: 'image', source: { type: 'base64', media_type: f.mimetype, data: f.buffer.toString('base64') } }));
     content.push({ type: 'text', text: `Convert this training program${files.length > 1 ? ` (${files.length} files, in order)` : ''} into the structured format.` });
+    if (instructions) {
+      content.push({ type: 'text', text: `The coach's instructions for this import — follow them exactly; they take priority over the defaults above. They decide which parts of the files to use and which to leave out (anything they say to discard must not appear in the output), and may say how to name, order or label sessions:\n<coach_instructions>\n${instructions}\n</coach_instructions>\nIn the warnings, briefly confirm what you included and what you left out because of these instructions.` });
+    }
 
     let message;
     try {

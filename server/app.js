@@ -671,7 +671,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       const library = q('SELECT id, name, category, metric FROM exercises WHERE coach_id = ? ORDER BY name').all(coach.id);
       let parsed;
       try {
-        parsed = await programImporter(files, library.map((e) => e.name));
+        parsed = await programImporter(files, library.map((e) => e.name), String(req.body?.instructions || '').trim().slice(0, 2000));
       } catch (e) {
         importsToday.set(key, used);
         if (e.status) fail(e.status, e.message);

@@ -135,7 +135,7 @@ The rule is shown back as numbered steps for you to check, with a note on anythi
 
 The same key turns on **Coach → Programs → Import a program**.
 
-1. Drag a PDF onto the dashed box, or tap it to choose files. Photos and screenshots of a written program also work (JPG/PNG, up to 10 files at once). For an iPhone HEIC photo, take a screenshot of it first.
+1. Drag a PDF onto the dashed box, or tap it to choose files. Optionally type instructions, e.g. "Only use the no-game-week program; ignore the game-week sessions". Photos and screenshots of a written program also work (JPG/PNG, up to 10 files at once). For an iPhone HEIC photo, take a screenshot of it first.
 2. Tap **Read this file**. This takes a minute or two.
 3. Check the preview:
    - Weeks, sessions and exercises with sets × reps and loads.
