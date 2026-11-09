@@ -7,6 +7,7 @@ import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import ExerciseFields from '../components/ExerciseFields.jsx';
 import { nextSetLoad, targetRirOf } from '../../../shared/effort.js';
+import { groupsOf } from '../supersets.js';
 
 const draftKey = (a, d) => `session-draft-${a}-${d}`;
 const readDraft = (k) => {
@@ -117,10 +118,17 @@ export default function Session() {
     const last = list[list.length - 1] || {};
     update(rxId, [...list, { ...last, done: false, manual: false }]);
   };
+  // Supersets: go straight to the next exercise in the group; rest only after the last one in the round.
+  const groups = groupsOf(day.prescriptions);
+  const groupOf = (rxId) => groups.find((g) => g.some((k) => day.prescriptions[k].id === rxId));
   const toggleDone = (r, i) => {
     const s = rows[r.id][i];
     update(r.id, rows[r.id].map((x, j) => (j === i ? { ...x, done: !x.done } : x)));
-    if (!s.done && r.rest_seconds) setTimer({ end: Date.now() + r.rest_seconds * 1000, total: r.rest_seconds });
+    if (s.done) return;
+    const g = groupOf(r.id);
+    const isLastInRound = !g || day.prescriptions[g[g.length - 1]].id === r.id;
+    if (isLastInRound && r.rest_seconds) setTimer({ end: Date.now() + r.rest_seconds * 1000, total: r.rest_seconds });
+    if (!isLastInRound) setTimer(null);
   };
 
   const doneCount = Object.values(rows).flat().filter((s) => s.done).length;
@@ -192,7 +200,8 @@ export default function Session() {
       {day.notes && <p className="card small">{day.notes}</p>}
       {!data.assignment_id && <p className="error">This session isn’t part of an active program for this athlete.</p>}
 
-      {day.prescriptions.map((r0) => {
+      {groups.map((g) => {
+        const card = (r0) => {
         const r = eff(r0);
         const advice = reflow(rows[r0.id], r, data.autoreg).advice;
         return (
@@ -200,6 +209,7 @@ export default function Session() {
           <div className="ex-head">
             <div className="grow">
               <div>{r.block && <span className="block-tag">{r.block}</span>}<strong>{r.exercise_name}</strong></div>
+              {r0.notes && <div className="ex-note">{r0.notes}</div>}
               {swaps[r0.id] && <div className="tiny muted">Swapped in for {r0.exercise_name} today · <button type="button" className="link-btn" onClick={() => applySwap(r0, null)}>undo</button></div>}
               <div className="small muted">{describeRx(r)}</div>
               {r0.swappable && !swaps[r0.id] && swapping !== r0.id && (
@@ -217,7 +227,6 @@ export default function Session() {
           {swapping === r0.id && (
             <SwapPicker r0={r0} athleteId={athleteId} onPick={(p) => applySwap(r0, p)} onCancel={() => setSwapping(null)} />
           )}
-          {r.notes && <div className="small">📝 {r.notes}</div>}
           {r.cues && <div className="small muted">Cues: {r.cues}</div>}
           {r.demo_url && <a className="small" href={r.demo_url} target="_blank" rel="noreferrer">Watch demo ↗</a>}
           {r.last_time?.length > 0 && (
@@ -278,6 +287,22 @@ export default function Session() {
             </label>
           </div>
         </section>
+        );
+        };
+        if (g.length === 1) return <div key={day.prescriptions[g[0]].id}>{card(day.prescriptions[g[0]])}</div>;
+        const items = g.map((k) => day.prescriptions[k]);
+        const letter = String(items[0].block || '').charAt(0).toUpperCase();
+        const rest = items[items.length - 1].rest_seconds;
+        return (
+          <div key={items[0].id} className="superset-group">
+            <div className="superset-head">
+              <strong>Superset {letter}</strong>
+              <span className="tiny muted">
+                {items.map((x) => x.block).join(' → ')}, one set of each, then rest{rest ? ` ${rest >= 60 ? `${Math.round(rest / 6) / 10} min` : `${rest} s`}` : ''}. Repeat for all sets.
+              </span>
+            </div>
+            {items.map(card)}
+          </div>
         );
       })}
 

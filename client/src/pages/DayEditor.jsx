@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { CATEGORIES, LOAD_TYPES, METRIC_LABELS, describeRx, useApi } from '../util.js';
 import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
+import { isAutoLabelled, linksFrom, relabel } from '../supersets.js';
 
 const blankRx = (ex) => ({
   key: Math.random().toString(36).slice(2),
@@ -87,19 +88,29 @@ export default function DayEditor() {
     setRestored(false);
   };
   const setRx = (i, patch) => change({ prescriptions: day.prescriptions.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  // Once the session uses the app's letters (A, B1, B2…), keep them in order as exercises move, come and go.
+  const withLabels = (list) => (isAutoLabelled(list) && list.some((r) => r.block) ? relabel(list) : list);
   const move = (i, dir) => {
     const list = [...day.prescriptions];
     const j = i + dir;
     if (j < 0 || j >= list.length) return;
     [list[i], list[j]] = [list[j], list[i]];
-    change({ prescriptions: list });
+    change({ prescriptions: withLabels(list) });
   };
-  const remove = (i) => change({ prescriptions: day.prescriptions.filter((_, j) => j !== i) });
+  const remove = (i) => change({ prescriptions: withLabels(day.prescriptions.filter((_, j) => j !== i)) });
+  const links = linksFrom(day.prescriptions);
+  // Link / unlink an exercise with the one below it. Supersets can be any length (A1, A2, A3…).
+  const toggleLink = (i) => {
+    const next = [...links];
+    next[i] = !next[i];
+    if (!isAutoLabelled(day.prescriptions) && !confirm('Linking re-letters this session’s blocks (A, B1, B2…), replacing your own labels. Continue?')) return;
+    change({ prescriptions: relabel(day.prescriptions, next) });
+  };
   const add = (exId, created) => {
     const ex = created || exById[exId];
     if (!ex) return;
     const rx = { ...blankRx(ex), exercise_name: ex.name };
-    change({ prescriptions: [...day.prescriptions, rx] });
+    change({ prescriptions: withLabels([...day.prescriptions, rx]) });
     setOpen(rx.key);
     setAdding('');
   };
@@ -145,11 +156,21 @@ export default function DayEditor() {
         {day.prescriptions.map((r, i) => {
           const ex = exById[r.exercise_id] || {};
           const isOpen = open === r.key;
+          const inSuperset = links[i] || links[i - 1];
           return (
-            <div key={r.key} className={`rx-card ${isOpen ? 'open' : ''}`}>
+            <div key={r.key} style={{ display: 'contents' }}>
+            <div className={`rx-card ${isOpen ? 'open' : ''}${inSuperset ? ' in-superset' : ''}${links[i] ? ' linked-below' : ''}${links[i - 1] ? ' linked-above' : ''}`}>
               <div className="rx-head" onClick={() => setOpen(isOpen ? null : r.key)}>
                 <div className="grow">
                   <div>{r.block && <span className="block-tag">{r.block}</span>}<strong>{ex.name || r.exercise_name}</strong></div>
+                  <input
+                    className="rx-note"
+                    value={r.notes || ''}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setRx(i, { notes: e.target.value })}
+                    placeholder="+ Note for the athlete (e.g. plates under the heels)"
+                    aria-label={`Note for ${ex.name || r.exercise_name}`}
+                  />
                   <div className="muted small">{describeRx(r) || 'Tap to set sets, reps and load'}</div>
                 </div>
                 <div className="rx-tools" onClick={(e) => e.stopPropagation()}>
@@ -159,6 +180,12 @@ export default function DayEditor() {
                 </div>
               </div>
               {isOpen && <RxForm r={r} ex={ex} rules={ruleData?.rules || []} defaultRule={ruleData?.rules.find((x) => x.id === program.rule_id)} onChange={(patch) => setRx(i, patch)} exercises={exData?.exercises || []} />}
+            </div>
+            {i < day.prescriptions.length - 1 && (
+              <button type="button" className={`superset-link${links[i] ? ' on' : ''}`} onClick={() => toggleLink(i)}>
+                {links[i] ? '⛓ Superset · tap to unlink' : '+ Superset with next'}
+              </button>
+            )}
             </div>
           );
         })}
@@ -205,7 +232,7 @@ function RxForm({ r, ex, rules, onChange, exercises, defaultRule }) {
             {exercises.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
         </label>
-        <label>Block / order<input {...f('block')} placeholder="A1, B2, Speed…" /></label>
+        <label>Block / order<input {...f('block')} placeholder="Set by Superset links, or type your own" /></label>
         <label>Sets<input type="number" inputMode="numeric" min={0} {...f('sets')} /></label>
         <label>{isLoad || ex.metric === 'reps' ? 'Reps' : 'Reps / efforts'}<input {...f('reps')} placeholder="5, 3-5, 8/side" /></label>
         <label>
@@ -227,7 +254,6 @@ function RxForm({ r, ex, rules, onChange, exercises, defaultRule }) {
         <label>Rest (s)<input type="number" inputMode="numeric" {...f('rest_seconds')} /></label>
         {isLoad && <label>Tempo<input {...f('tempo')} placeholder="31X1" /></label>}
       </div>
-      <label>Coaching notes<input {...f('notes')} placeholder="Cues, intent, variations" /></label>
       <div className="grid2">
         <label>
           Progression model

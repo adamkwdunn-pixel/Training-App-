@@ -656,3 +656,15 @@ tr.clickable:hover td { background: var(--hover); }
 .swap-option:last-child { border-bottom: 0; }
 .swap-option:hover { background: rgba(255, 255, 255, .05); }
 .link-btn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
+
+/* Supersets and per-exercise notes */
+.rx-note { width: 100%; background: none; border: 0; border-bottom: 1px dashed transparent; border-radius: 0; padding: 2px 0; min-height: 0; font-size: 13px; font-style: italic; color: var(--text); }
+.rx-note::placeholder { color: var(--muted); font-style: normal; opacity: .7; }
+.rx-note:focus { outline: none; border-bottom-color: var(--line-soft); }
+.superset-link { align-self: center; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 1px dashed var(--line-soft); border-radius: 999px; padding: 4px 12px; margin: -4px 0; cursor: pointer; }
+.superset-link:hover { color: var(--text); border-color: var(--line); }
+.superset-link.on { color: var(--text); border-style: solid; border-color: var(--line); }
+.rx-card.in-superset { border-left: 3px solid var(--text); }
+.ex-note { font-size: 13px; font-style: italic; margin: 2px 0 4px; }
+.superset-group { border-left: 3px solid var(--text); padding-left: 10px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.superset-head { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 0 4px; }
