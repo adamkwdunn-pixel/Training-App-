@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { CATEGORIES, LOAD_TYPES, METRIC_LABELS, describeRx, useApi } from '../util.js';
 import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
+import AutoTextarea from '../components/AutoTextarea.jsx';
 import { isAutoLabelled, linksFrom, relabel } from '../supersets.js';
 
 const blankRx = (ex) => ({
@@ -149,7 +150,7 @@ export default function DayEditor() {
       )}
       <div className="card stack">
         <label>Session title<input value={day.title || ''} onChange={(e) => change({ title: e.target.value })} placeholder="e.g. Lower strength + acceleration" /></label>
-        <label>Session notes<textarea rows={2} value={day.notes || ''} onChange={(e) => change({ notes: e.target.value })} placeholder="Warm-up, focus, anything the athlete should know" /></label>
+        <label>Session notes<AutoTextarea minRows={3} maxHeight="none" value={day.notes || ''} onChange={(e) => change({ notes: e.target.value })} placeholder="Warm-up, focus, anything the athlete should know" /></label>
       </div>
 
       <div className="rx-list">
@@ -163,7 +164,9 @@ export default function DayEditor() {
               <div className="rx-head" onClick={() => setOpen(isOpen ? null : r.key)}>
                 <div className="grow">
                   <div>{r.block && <span className="block-tag">{r.block}</span>}<strong>{ex.name || r.exercise_name}</strong></div>
-                  <input
+                  <AutoTextarea
+                    minRows={1}
+                    maxHeight="40vh"
                     className="rx-note"
                     value={r.notes || ''}
                     onClick={(e) => e.stopPropagation()}

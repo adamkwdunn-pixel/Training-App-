@@ -6,6 +6,7 @@ import { describeRx, today, useApi } from '../util.js';
 import { Loading, PageHeader } from '../components/Bits.jsx';
 import Icon from '../components/Icon.jsx';
 import ExerciseFields from '../components/ExerciseFields.jsx';
+import ScrollBox from '../components/ScrollBox.jsx';
 import { nextSetLoad, targetRirOf } from '../../../shared/effort.js';
 import { groupsOf } from '../supersets.js';
 
@@ -197,7 +198,12 @@ export default function Session() {
   return (
     <>
       <PageHeader title={day.title || `Week ${day.week} · Day ${day.day}`} back={isCoach ? `/athletes/${athleteId}?tab=program` : '/program'} sub={`Week ${day.week} · Day ${day.day}${isCoach ? ' · logging for athlete' : ''}`} />
-      {day.notes && <p className="card small">{day.notes}</p>}
+      {day.notes && (
+        <div className="card session-notes">
+          <div className="stat-label">Session notes</div>
+          <ScrollBox><p className="notes-text">{day.notes}</p></ScrollBox>
+        </div>
+      )}
       {!data.assignment_id && <p className="error">This session isn’t part of an active program for this athlete.</p>}
 
       {groups.map((g) => {

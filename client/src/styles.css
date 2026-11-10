@@ -668,3 +668,21 @@ tr.clickable:hover td { background: var(--hover); }
 .ex-note { font-size: 13px; font-style: italic; margin: 2px 0 4px; }
 .superset-group { border-left: 3px solid var(--text); padding-left: 10px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
 .superset-head { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 0 4px; }
+
+/* Notes: always shown in full, keep line breaks; long ones scroll with a visible bar */
+.auto-textarea { resize: none; overflow-y: auto; line-height: 1.45; }
+textarea.rx-note { overflow-y: auto; line-height: 1.4; white-space: pre-wrap; }
+.ex-note, .notes-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ex-note { font-size: 14px; line-height: 1.4; }
+.notes-text { margin: 0; font-size: 15px; line-height: 1.5; }
+.session-notes { display: flex; flex-direction: column; gap: 8px; }
+.scroll-box { position: relative; }
+.scroll-box-body { overflow-y: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.scroll-box-body::-webkit-scrollbar { display: none; }
+.scroll-box.scrolls .scroll-box-body { padding-right: 18px; }
+.scroll-box-track { position: absolute; top: 0; right: 2px; bottom: 0; width: 6px; border-radius: 3px; background: var(--line-soft); }
+.scroll-box-thumb { position: absolute; left: 0; right: 0; border-radius: 3px; background: var(--text); }
+.scroll-box-more { position: absolute; left: 0; right: 18px; bottom: 0; padding-top: 26px; text-align: center; color: var(--muted);
+  background: linear-gradient(to bottom, transparent, var(--surface) 70%); pointer-events: none; }
+.auto-textarea::-webkit-scrollbar, textarea.rx-note::-webkit-scrollbar { width: 6px; }
+.auto-textarea::-webkit-scrollbar-thumb, textarea.rx-note::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
