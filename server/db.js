@@ -334,6 +334,17 @@ CREATE TABLE IF NOT EXISTS notification_prefs (
   last_photo_on TEXT
 );
 
+-- Pages that failed to draw on someone's device (reported by the app's error screen).
+CREATE TABLE IF NOT EXISTS client_errors (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  path TEXT,
+  message TEXT,
+  stack TEXT,
+  user_agent TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

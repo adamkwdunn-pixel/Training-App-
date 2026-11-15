@@ -13,6 +13,7 @@ export const TYPES = {
     data: 'Bodyweight and body fat entries',
     flag: 'Progression rule flags',
     join: 'Athlete joins the squad',
+    app_error: 'A page failed to load on an athlete’s phone',
   },
   athlete: {
     session: 'Session completed summary',

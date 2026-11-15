@@ -82,9 +82,14 @@ export default function Session() {
   useEffect(() => {
     if (!data) return;
     const draft = readDraft(key);
-    setRows(draft?.rows || initialRows(data.day));
+    // Progress saved on this phone is kept, but the coach may have changed the session since: exercises added
+    // since get fresh rows, removed ones are dropped, so the saved copy can never break the page.
+    const fresh = initialRows(data.day);
+    const ids = new Set(data.day.prescriptions.map((r) => String(r.id)));
+    const savedRows = draft?.rows && typeof draft.rows === 'object' ? draft.rows : {};
+    setRows(Object.fromEntries(Object.entries(fresh).map(([id, list]) => [id, Array.isArray(savedRows[id]) && savedRows[id].length && savedRows[id].every((x) => x && typeof x === 'object') ? savedRows[id] : list])));
     if (draft?.meta) setMeta(draft.meta);
-    if (draft?.swaps) setSwaps(draft.swaps);
+    if (draft?.swaps) setSwaps(Object.fromEntries(Object.entries(draft.swaps).filter(([id]) => ids.has(String(id)))));
   }, [data, key]);
 
   useEffect(() => {
@@ -109,7 +114,7 @@ export default function Session() {
   };
   const update = (rxId, list) => setRows({ ...rows, [rxId]: reflow(list, rxById(rxId), data.autoreg).list });
   const setSet = (rxId, i, patch) => {
-    const list = rows[rxId];
+    const list = rows[rxId] || [];
     // Typing a weight for a set that hasn't been done yet means "I'll choose this one myself".
     const manual = 'weight' in patch && !list[i].done ? { manual: true } : {};
     update(rxId, list.map((s, j) => (j === i ? { ...s, ...patch, ...manual } : s)));
@@ -123,7 +128,8 @@ export default function Session() {
   const groups = groupsOf(day.prescriptions);
   const groupOf = (rxId) => groups.find((g) => g.some((k) => day.prescriptions[k].id === rxId));
   const toggleDone = (r, i) => {
-    const s = rows[r.id][i];
+    const s = (rows[r.id] || [])[i];
+    if (!s) return;
     update(r.id, rows[r.id].map((x, j) => (j === i ? { ...x, done: !x.done } : x)));
     if (s.done) return;
     const g = groupOf(r.id);
@@ -209,7 +215,7 @@ export default function Session() {
       {groups.map((g) => {
         const card = (r0) => {
         const r = eff(r0);
-        const advice = reflow(rows[r0.id], r, data.autoreg).advice;
+        const advice = reflow(rows[r0.id] || [], r, data.autoreg).advice;
         return (
         <section key={r0.id} className="card ex-card">
           <div className="ex-head">
@@ -247,7 +253,7 @@ export default function Session() {
               {r.metric === 'load' ? (<><span>kg</span><span>Reps</span><span>RIR</span></>) : (<><span>{r.metric === 'time' ? 'Time (s)' : r.metric === 'height' ? 'cm' : r.metric === 'distance' ? 'm' : r.metric === 'velocity' ? 'm/s' : 'Reps'}</span></>)}
               <span>Done</span>
             </div>
-            {rows[r.id].map((s, i) => (
+            {(rows[r.id] || []).map((s, i) => (
               <div key={i} className={`set-row ${s.done ? 'done' : ''}`}>
                 <span className="set-n">{i + 1}</span>
                 {r.metric === 'load' ? (

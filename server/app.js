@@ -898,6 +898,30 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     res.json({ ok: true });
   });
 
+  // ---------- app errors reported by the client's error screen ----------
+  app.post('/api/client-errors', (req, res) => {
+    const u = req.user || null;
+    const b = req.body || {};
+    const message = String(b.message || 'Unknown error').slice(0, 500);
+    const pagePath = String(b.path || '').slice(0, 200);
+    console.error(`[client error] ${u ? `${u.name} (#${u.id})` : 'signed out'} on ${pagePath}: ${message}`);
+    if (!u) return res.json({ ok: true });
+    const recent = q(`SELECT 1 FROM client_errors WHERE user_id = ? AND path = ? AND message = ? AND created_at > datetime('now', '-1 hour')`).get(u.id, pagePath, message);
+    q('INSERT INTO client_errors (user_id, path, message, stack, user_agent) VALUES (?, ?, ?, ?, ?)').run(
+      u.id, pagePath, message, `${String(b.stack || '').slice(0, 2000)}\n--\n${String(b.component || '').slice(0, 1500)}`, String(req.get('user-agent') || '').slice(0, 200),
+    );
+    q('DELETE FROM client_errors WHERE id NOT IN (SELECT id FROM client_errors ORDER BY id DESC LIMIT 300)').run();
+    if (!recent && u.role === 'athlete' && u.coach_id) {
+      notify(u.coach_id, { type: 'app_error', actorId: u.id, title: `A page didn’t load for ${u.name}`, body: `${pagePath} · ${message}`, link: '/profile' });
+    }
+    res.json({ ok: true });
+  });
+  app.get('/api/client-errors', (req, res) => {
+    const coach = requireCoach(req);
+    res.json({ errors: q(`SELECT e.id, e.path, e.message, e.created_at, u.name AS user_name FROM client_errors e JOIN users u ON u.id = e.user_id
+      WHERE u.id = ? OR u.coach_id = ? ORDER BY e.id DESC LIMIT 20`).all(coach.id, coach.id) });
+  });
+
   // ---------- in-session (tactical) weight adjustments from RIR ----------
   const autoregFor = (coachId) => {
     let saved = {};

@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { api, getToken, setToken } from './api.js';
 import Layout from './components/Layout.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Login from './pages/Login.jsx';
 import CoachHome from './pages/CoachHome.jsx';
 import Athletes from './pages/Athletes.jsx';
@@ -97,6 +98,7 @@ export default function App() {
     <AuthContext.Provider value={auth}>
       {banner}
       <Layout>
+        <PageBoundary>
         <Routes>
           {isCoach ? (
             <>
@@ -143,9 +145,16 @@ export default function App() {
           <Route path="/settings/notifications" element={<NotificationSettings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </PageBoundary>
       </Layout>
     </AuthContext.Provider>
   );
+}
+
+/** A fresh error boundary per page, so moving to another page clears the error. */
+function PageBoundary({ children }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary key={pathname}>{children}</ErrorBoundary>;
 }
 
 function UpdateBanner() {

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
+import { useApi } from '../util.js';
 import { PageHeader } from '../components/Bits.jsx';
 
 export default function Profile() {
@@ -61,6 +62,23 @@ export default function Profile() {
   );
 }
 
+/** Pages that failed to load on someone's phone recently — the details to pass on when asking for a fix. */
+function RecentErrors() {
+  const { data } = useApi('/client-errors');
+  if (!data) return null;
+  if (!data.errors.length) return <div className="kv small"><span className="muted">Page errors</span><span>None reported ✓</span></div>;
+  return (
+    <details className="small">
+      <summary><span className="muted">Page errors</span> · {data.errors.length} recent</summary>
+      <ul style={{ margin: '6px 0 0', paddingLeft: '1.1rem' }}>
+        {data.errors.map((e) => (
+          <li key={e.id}><strong>{e.user_name}</strong> · {new Date(`${e.created_at.replace(' ', 'T')}Z`).toLocaleString()} · {e.path}<div className="tiny muted">{e.message}</div></li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 /** Coach-only: what the server is running on, so hosting problems are visible. */
 function ServerStatus({ system }) {
   const s = system.storage;
@@ -75,6 +93,7 @@ function ServerStatus({ system }) {
       <div className="kv small"><span className="muted">AI food estimates</span><span>{system.ai_configured ? 'On ✓' : 'Off (add ANTHROPIC_API_KEY in Render)'}</span></div>
       <div className="kv small"><span className="muted">Program import (PDF/photo)</span><span>{system.import_configured ? 'On ✓' : 'Off (add ANTHROPIC_API_KEY in Render)'}</span></div>
       <div className="kv small"><span className="muted">Login emails</span><span>{system.email_configured ? 'Set up ✓' : 'Not set up (details shown to copy/share)'}</span></div>
+      <RecentErrors />
       {!ok && (
         <div className="small" style={{ lineHeight: 1.6 }}>
           <strong>How to fix (in Render, on this app’s service page):</strong>
