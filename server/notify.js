@@ -19,7 +19,7 @@ export const TYPES = {
     session: 'Session completed summary',
     reminder: 'Daily check-in reminder',
     photo: 'Weekly progress photo reminder',
-    comment: 'Coach feedback and messages',
+    comment: 'Coach feedback and messages (always on)',
     program: 'New program or protocol assigned',
     test: 'Testing results recorded or verified by coach',
     data: 'Measurements recorded by your coach',
@@ -57,9 +57,12 @@ export function webPushSender(db) {
   };
 }
 
+// Feedback from the coach always reaches the athlete; it can't be switched off.
+export const ALWAYS_ON = ['comment'];
+
 export function prefsOf(db, userId) {
   const row = db.prepare('SELECT * FROM notification_prefs WHERE user_id = ?').get(userId);
-  return row ? { ...row, muted: JSON.parse(row.muted) } : { user_id: userId, muted: [], reminder_time: '08:00', timezone: null, last_reminder_on: null, photo_day: 1, last_photo_on: null };
+  return row ? { ...row, muted: JSON.parse(row.muted).filter((t) => !ALWAYS_ON.includes(t)) } : { user_id: userId, muted: [], reminder_time: '08:00', timezone: null, last_reminder_on: null, photo_day: 1, last_photo_on: null };
 }
 
 /**
@@ -175,6 +178,7 @@ export function registerNotifications(app, { db, q, fail, str, requireUser, noti
     res.json({
       prefs: { muted: p.muted, reminder_time: p.reminder_time, timezone: p.timezone, photo_day: p.photo_day ?? 1 },
       types: TYPES[u.role],
+      always_on: ALWAYS_ON,
       devices: q('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(u.id).n,
     });
   });
@@ -183,7 +187,7 @@ export function registerNotifications(app, { db, q, fail, str, requireUser, noti
     const u = requireUser(req);
     const cur = prefsOf(db, u.id);
     const b = req.body || {};
-    const muted = Array.isArray(b.muted) ? b.muted.filter((t) => t in TYPES[u.role]) : cur.muted;
+    const muted = Array.isArray(b.muted) ? b.muted.filter((t) => t in TYPES[u.role] && !ALWAYS_ON.includes(t)) : cur.muted;
     const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(b.reminder_time || '') ? b.reminder_time : cur.reminder_time;
     let tz = cur.timezone;
     if (b.timezone) {

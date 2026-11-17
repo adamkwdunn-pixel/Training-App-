@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import PushPrompt from '../components/PushPrompt.jsx';
 import { useAuth } from '../App.jsx';
 import { describeRx, fmtDate, today, useApi } from '../util.js';
 import { Empty, Loading, PageHeader } from '../components/Bits.jsx';
@@ -19,6 +20,7 @@ export default function AthleteHome() {
   return (
     <>
       <PageHeader title={`Hi ${user.name.split(' ')[0]}`} sub={coach ? `Coached by ${coach.name}` : 'Not linked to a coach'} />
+      <PushPrompt />
 
       <div className="grid2" style={{ marginBottom: 6 }}>
         <Link to="/recovery" className="card flat row" style={{ margin: 0, border: '1px solid var(--line)' }}>

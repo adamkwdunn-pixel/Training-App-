@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PushPrompt from '../components/PushPrompt.jsx';
 import { Link } from 'react-router-dom';
 import { api, videoDownload } from '../api.js';
 import { useAuth } from '../App.jsx';
@@ -19,6 +20,7 @@ export default function Videos() {
   return (
     <>
       <PageHeader title={isCoach ? 'Form checks' : 'My form checks'} sub={isCoach ? 'The latest video for each athlete and exercise' : 'Film a set and send it to your coach'} />
+      {!isCoach && <PushPrompt reason="when your coach reviews your videos" />}
       {!isCoach && <VideoUploader exercises={ex?.exercises} onDone={reload} />}
       <div className="segmented">
         {[['pending', 'To review'], ['reviewed', 'Reviewed'], ['', 'All']].map(([v, l]) => (
@@ -42,15 +44,17 @@ function VideoCard({ v, isCoach, onReplied }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [sent, setSent] = useState('');
+  const [noPush, setNoPush] = useState(false);
 
   const send = async () => {
     setBusy(true);
     setErr('');
     try {
-      await api('/comments', { method: 'POST', body: { athlete_id: v.athlete_id, target_type: 'video', target_id: v.id, body: text.trim() } });
+      const out = await api('/comments', { method: 'POST', body: { athlete_id: v.athlete_id, target_type: 'video', target_id: v.id, body: text.trim() } });
       setSent(text.trim());
+      setNoPush(out.pushed === false);
       setText('');
-      setTimeout(onReplied, 1200); // leave the confirmation visible briefly before the list refreshes
+      setTimeout(onReplied, 4000); // leave the confirmation visible briefly before the list refreshes
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -78,7 +82,12 @@ function VideoCard({ v, isCoach, onReplied }) {
         <a className="btn small ghost" href={videoDownload(v.id)} download><Icon name="download" size={16} /> Download</a>
       </div>
       {isCoach && (
-        sent ? <p className="small" style={{ margin: 0 }}>✓ Sent to {v.athlete_name.split(' ')[0]}: “{sent}”</p> : (
+        sent ? (
+          <p className="small" style={{ margin: 0 }}>
+            ✓ Sent to {v.athlete_name.split(' ')[0]}: “{sent}”
+            {noPush && <span className="tiny muted" style={{ display: 'block' }}>🔕 Notifications are off on their phone, so they’ll see it next time they open the app.</span>}
+          </p>
+        ) : (
           <>
             <div className="quick-reply">
               <textarea rows={1} value={text} onChange={(e) => setText(e.target.value)} placeholder="Quick reply…" aria-label={`Reply to ${v.athlete_name}`} />

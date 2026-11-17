@@ -103,11 +103,12 @@ export default function NotificationSettings() {
       <h2>What to notify me about</h2>
       <div className="list">
         {Object.entries(types).map(([type, label]) => {
-          const on = !prefs.muted.includes(type);
+          const locked = (data.always_on || []).includes(type);
+          const on = locked || !prefs.muted.includes(type);
           return (
             <label key={type} className="row switch-row">
               <span className="grow" style={{ color: 'var(--text)', fontSize: '0.95rem', fontWeight: 500, letterSpacing: 0 }}>{label}</span>
-              <input type="checkbox" className="switch" checked={on} onChange={() => toggle(type)} />
+              <input type="checkbox" className="switch" checked={on} disabled={locked} onChange={() => !locked && toggle(type)} />
             </label>
           );
         })}

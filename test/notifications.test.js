@@ -138,3 +138,41 @@ test('coach and athlete notifications, push, mutes and reminders', async () => {
   await call('PUT', '/notifications/prefs', A, { muted: ['reminder'] });
   assert.equal(runReminders(db, app.locals.notify, at('2026-12-03T19:00:00Z')), 0);
 });
+
+test('coach feedback always notifies the athlete, and the coach knows when push is off', async () => {
+  const c = (await call('POST', '/auth/login', null, { email: 'c@x.com', password: 'password1' })).data;
+  const C = c.token;
+  const a = (await call('POST', '/auth/register', null, { name: 'Garin Roberts', email: 'garin@x.com', password: 'password1', invite_code: c.user.invite_code })).data;
+  const A = a.token;
+
+  // Trying to mute coach feedback has no effect.
+  const prefs = (await call('GET', '/notifications/prefs', A)).data;
+  assert.deepEqual(prefs.always_on, ['comment']);
+  const saved = (await call('PUT', '/notifications/prefs', A, { ...prefs.prefs, muted: ['comment', 'photo'] })).data.prefs;
+  assert.deepEqual(saved.muted, ['photo']);
+
+  // No phone signed up yet: the in-app notification is still made, and the coach is told it wasn't pushed.
+  let out = await call('POST', '/comments', C, { athlete_id: a.user.id, body: 'Good week — keep the tempo slow on RDLs' });
+  assert.equal(out.status, 201);
+  assert.equal(out.data.pushed, false);
+  assert.equal(out.data.athlete_name, 'Garin Roberts');
+  assert.equal((await call('GET', '/athletes', C)).data.athletes.find((x) => x.id === a.user.id).push_devices, 0);
+  assert.equal((await call('GET', `/athletes/${a.user.id}`, C)).data.athlete.push_devices, 0);
+  const inbox = (await call('GET', '/notifications', A)).data.notifications;
+  assert.equal(inbox[0].type, 'comment');
+
+  // Once the phone is signed up, every kind of coach feedback is pushed.
+  await call('POST', '/push/subscribe', A, { subscription: { endpoint: 'https://push.example/garin', keys: { p256dh: 'k', auth: 'a' } } });
+  const fd = new FormData();
+  fd.append('file', new Blob([Buffer.from('v')], { type: 'video/mp4' }), 'v.mp4');
+  const vid = await call('POST', '/videos', A, fd);
+  const before = pushed.length;
+  out = await call('POST', '/comments', C, { athlete_id: a.user.id, target_type: 'video', target_id: vid.data.id, body: 'Knees out a touch more' });
+  assert.equal(out.data.pushed, true);
+  await call('POST', '/comments', C, { athlete_id: a.user.id, body: 'Rest day tomorrow' });
+  await new Promise((r) => setTimeout(r, 50));
+  const mine = pushed.slice(before).filter((p) => p.endpoint === 'https://push.example/garin');
+  assert.deepEqual(mine.map((p) => p.title), ['Adam commented on your form check', 'Message from Adam']);
+  assert.equal(mine[0].body, 'Knees out a touch more');
+  assert.equal(mine[0].url, `/videos/${vid.data.id}`);
+});

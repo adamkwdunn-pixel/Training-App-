@@ -16,6 +16,7 @@ export default function Thread({ athleteId, type = 'general', targetId, placehol
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [note, setNote] = useState('');
 
   const send = async (e) => {
     e.preventDefault();
@@ -23,7 +24,8 @@ export default function Thread({ athleteId, type = 'general', targetId, placehol
     setBusy(true);
     setErr('');
     try {
-      await api('/comments', { method: 'POST', body: { athlete_id: athleteId, target_type: type, target_id: targetId, body } });
+      const out = await api('/comments', { method: 'POST', body: { athlete_id: athleteId, target_type: type, target_id: targetId, body } });
+      setNote(out.pushed === false ? `Sent. ${out.athlete_name?.split(' ')[0] || 'They'} hasn’t turned on notifications yet, so they’ll see it next time they open the app.` : '');
       setBody('');
       reload();
     } catch (e2) {
@@ -62,6 +64,7 @@ export default function Thread({ athleteId, type = 'general', targetId, placehol
         <button className="btn primary" disabled={busy || !body.trim()}>Send</button>
       </form>
       {err && <p className="error">{err}</p>}
+      {note && <p className="tiny muted" style={{ margin: 0 }}>🔕 {note}</p>}
     </div>
   );
 }

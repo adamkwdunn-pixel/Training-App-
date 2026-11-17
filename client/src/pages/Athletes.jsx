@@ -132,6 +132,7 @@ export default function Athletes() {
               {a.flags > 0 && <Badge tone="warn">{a.flags} flag</Badge>}
               {a.unread_messages > 0 && <Badge tone="info">{a.unread_messages} msg</Badge>}
               {a.unseen_logs > 0 && <Badge>{a.unseen_logs} new</Badge>}
+              {!a.is_me && a.push_devices === 0 && <span title="Notifications are off on their phone — they won't get alerts until they turn them on"><Badge>🔕 no alerts</Badge></span>}
             </div>
             </Link>
             <div className="row-tools">

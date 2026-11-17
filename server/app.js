@@ -205,6 +205,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
         (SELECT COUNT(*) FROM videos v WHERE v.athlete_id = u.id AND v.status = 'pending') AS pending_videos,
         (SELECT COUNT(*) FROM progression_events e WHERE e.athlete_id = u.id AND e.flagged = 1) AS flags,
         (SELECT COUNT(*) FROM comments c WHERE c.athlete_id = u.id AND c.author_id = u.id AND c.read_by_recipient = 0) AS unread_messages,
+        (SELECT COUNT(*) FROM push_subscriptions ps WHERE ps.user_id = u.id) AS push_devices,
         (SELECT p.name FROM assignments a JOIN programs p ON p.id = a.program_id
            WHERE a.athlete_id = u.id AND a.active = 1 ORDER BY a.start_date DESC LIMIT 1) AS program
       FROM users u WHERE u.coach_id = ? AND u.role = 'athlete' ORDER BY u.name`).all(u.id);
@@ -268,7 +269,7 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     const events = q(`
       SELECT ev.*, e.name AS exercise_name FROM progression_events ev JOIN exercises e ON e.id = ev.exercise_id
       WHERE ev.athlete_id = ? ORDER BY ev.id DESC LIMIT 30`).all(a.id);
-    const athlete = { ...publicUser(a), ...(req.user.role === 'coach' ? { notes: a.notes } : {}) };
+    const athlete = { ...publicUser(a), ...(req.user.role === 'coach' ? { notes: a.notes, push_devices: q('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(a.id).n } : {}) };
     res.json({ athlete, states, assignments, events, snapshot: snapshotOf(a, str(req.query.today) || today()) });
   });
 
@@ -1354,6 +1355,8 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
       const what = { video: 'your form check', workout: 'your session', injury: 'your injury report' }[type];
       const link = { video: `/videos/${targetId}`, workout: `/logs/${targetId}`, injury: '/recovery/injuries', general: '/messages' }[type];
       notify(a.id, { type: 'comment', title: what ? `${first(u.name)} commented on ${what}` : `Message from ${first(u.name)}`, body: text, link, actorId: u.id });
+      const devices = q('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(a.id).n;
+      return res.status(201).json({ id: Number(info.lastInsertRowid), pushed: devices > 0, athlete_name: a.name });
     } else {
       const what = { video: 'their form check', workout: 'their session', injury: 'their injury' }[type];
       const link = { video: `/videos/${targetId}`, workout: `/logs/${targetId}`, injury: `/athletes/${a.id}?tab=recovery`, general: `/athletes/${a.id}?tab=messages` }[type];

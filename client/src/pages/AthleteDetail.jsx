@@ -41,6 +41,12 @@ export default function AthleteDetail() {
 
       {tab === 'overview' && (
         <>
+          {a.push_devices === 0 && (
+            <div className="card flat small" style={{ border: '1px solid var(--warn)' }}>
+              🔕 <strong>{a.name.split(' ')[0]} hasn’t turned on notifications</strong>, so your feedback only shows when they open the app.
+              Ask them to tap <strong>Turn on notifications</strong> on their home screen. On iPhone, they need to add the app to their Home Screen first.
+            </div>
+          )}
           <Snapshot s={data.snapshot} go={(t) => setParams({ tab: t }, { replace: true })} />
           {a.notes && (
             <button className="card flat row" style={{ border: '1px solid var(--line-soft)', width: '100%' }} onClick={() => setParams({ tab: 'details' }, { replace: true })}>
