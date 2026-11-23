@@ -1025,6 +1025,22 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
     }
     res.status(201).json({ swaps: swapRows(a.id), sessions });
   });
+  // The accessories in one of the athlete's programs that they may swap for the whole block, with any swap in place.
+  app.get('/api/athletes/:id/assignments/:asgId/accessories', (req, res) => {
+    const a = athleteFor(req, req.params.id);
+    const asg = q('SELECT * FROM assignments WHERE id = ? AND athlete_id = ?').get(Number(req.params.asgId), a.id) || fail(404, 'Program not found');
+    const rows = q(`SELECT r.id AS prescription_id, r.exercise_id, e.name AS exercise_name, e.category, e.metric, e.main_lift,
+        COUNT(DISTINCT r.day_id) AS sessions
+      FROM prescriptions r JOIN exercises e ON e.id = r.exercise_id JOIN program_days d ON d.id = r.day_id
+      WHERE d.program_id = ? GROUP BY r.exercise_id ORDER BY MIN(d.week), MIN(d.day), MIN(r.position)`).all(asg.program_id);
+    const swaps = programSwaps(asg.id);
+    res.json({
+      accessories: rows.filter((r) => !isMainLift({ name: r.exercise_name, main_lift: r.main_lift, category: r.category })).map((r) => {
+        const sw = swaps.get(r.exercise_id);
+        return { ...r, swap_id: sw?.id ?? null, swapped_to: sw?.name ?? null };
+      }),
+    });
+  });
   app.delete('/api/athletes/:id/swaps/:swapId', (req, res) => {
     const a = athleteFor(req, req.params.id);
     const sw = q('SELECT * FROM athlete_swaps WHERE id = ? AND athlete_id = ?').get(Number(req.params.swapId), a.id) || fail(404, 'Swap not found');

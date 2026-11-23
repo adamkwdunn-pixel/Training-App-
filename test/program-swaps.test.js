@@ -79,6 +79,11 @@ test('an athlete can swap an accessory for their whole program; only their copy 
   assert.equal(log.status, 201);
   assert.deepEqual(log.data.swaps, ['Bicep Curl → Preacher Curl']);
 
+  // The Program page lists the swappable accessories (not main lifts), with the swap in place.
+  const acc = (await call('GET', `/athletes/${garin.user.id}/assignments/${asgId}/accessories`, G)).data.accessories;
+  assert.deepEqual(acc.map((x) => [x.exercise_name, x.swapped_to, x.sessions]), [['Bicep Curl', 'Preacher Curl', 2]]);
+  assert.equal((await call('GET', `/athletes/${garin.user.id}/assignments/${asgId}/accessories`, sam.token)).status, 403);
+
   // Switching back (athlete) or undoing (coach) restores the programmed exercise.
   const id = made.data.swaps[0].id;
   assert.equal((await call('DELETE', `/athletes/${garin.user.id}/swaps/${id}`, sam.token)).status, 403);

@@ -686,3 +686,4 @@ textarea.rx-note { overflow-y: auto; line-height: 1.4; white-space: pre-wrap; }
   background: linear-gradient(to bottom, transparent, var(--surface) 70%); pointer-events: none; }
 .auto-textarea::-webkit-scrollbar, textarea.rx-note::-webkit-scrollbar { width: 6px; }
 .auto-textarea::-webkit-scrollbar-thumb, textarea.rx-note::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+.block-swaps-head { width: 100%; background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: pointer; align-items: center; }
