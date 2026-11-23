@@ -963,14 +963,74 @@ export function createApp(db, { uploadDir = UPLOAD_DIR, maxUploadMb = Number(pro
   }
   const RX_SELECT = `SELECT r.*, e.name AS exercise_name, e.category, e.metric, e.demo_url, e.cues, e.main_lift
     FROM prescriptions r JOIN exercises e ON e.id = r.exercise_id`;
+  /** The athlete's assignment for a program (active one first). */
+  const assignmentFor = (athleteId, programId) => q('SELECT * FROM assignments WHERE athlete_id = ? AND program_id = ? ORDER BY active DESC, id DESC').get(athleteId, programId);
+  /** Whole-program swaps the athlete has made on this assignment: from exercise id -> swap row with the new exercise. */
+  const programSwaps = (assignmentId) => new Map(assignmentId ? q(`SELECT s.*, e.name, e.category, e.metric, e.demo_url, e.cues
+    FROM athlete_swaps s JOIN exercises e ON e.id = s.to_exercise_id WHERE s.assignment_id = ?`).all(assignmentId).map((x) => [x.from_exercise_id, x]) : []);
+
   function dayWithTargets(athlete, day) {
     const rxs = q(`${RX_SELECT} WHERE r.day_id = ? ORDER BY r.position, r.id`).all(day.id);
+    const swaps = programSwaps(assignmentFor(athlete.id, day.program_id)?.id);
     for (const r of rxs) {
-      withTargets(athlete, r);
       r.swappable = !isMainLift({ name: r.exercise_name, main_lift: r.main_lift, category: r.category });
+      const sw = r.swappable && swaps.get(r.exercise_id);
+      if (sw) {
+        // The athlete swapped this accessory for the rest of their program: show and log the new exercise instead.
+        Object.assign(r, {
+          swapped_from: r.exercise_id, swapped_from_name: r.exercise_name, program_swap_id: sw.id,
+          exercise_id: sw.to_exercise_id, exercise_name: sw.name, category: sw.category, metric: sw.metric, demo_url: sw.demo_url, cues: sw.cues,
+        });
+      }
+      withTargets(athlete, r);
     }
     return { ...day, prescriptions: rxs };
   }
+
+  // Whole-program swaps: an athlete can change an accessory for every session of a program assigned to them.
+  // It only changes their own copy; the coach's program and other athletes are untouched.
+  const swapRows = (athleteId) => q(`SELECT s.id, s.assignment_id, s.from_exercise_id, s.to_exercise_id, s.created_at, f.name AS from_name, t.name AS to_name,
+      p.name AS program_name, a.active, cb.name AS created_by_name
+    FROM athlete_swaps s JOIN exercises f ON f.id = s.from_exercise_id JOIN exercises t ON t.id = s.to_exercise_id
+    JOIN assignments a ON a.id = s.assignment_id JOIN programs p ON p.id = a.program_id LEFT JOIN users cb ON cb.id = s.created_by
+    WHERE s.athlete_id = ? ORDER BY a.active DESC, s.id DESC`).all(athleteId);
+  app.get('/api/athletes/:id/swaps', (req, res) => {
+    const a = athleteFor(req, req.params.id);
+    res.json({ swaps: swapRows(a.id) });
+  });
+  app.post('/api/athletes/:id/swaps', (req, res) => {
+    const u = requireUser(req);
+    const a = athleteFor(req, req.params.id);
+    const r = q(`${RX_SELECT} WHERE r.id = ?`).get(Number(req.body?.prescription_id)) || fail(404, 'Exercise not found in this session');
+    const day = q('SELECT * FROM program_days WHERE id = ?').get(r.day_id);
+    const asg = assignmentFor(a.id, day.program_id) || fail(403, 'This program isn’t assigned to you');
+    if (isMainLift({ name: r.exercise_name, main_lift: r.main_lift, category: r.category })) fail(400, `${r.exercise_name} is a main movement, so it stays as programmed`);
+    const ex = ownedBy('exercises', req.body?.exercise_id, a.coach_id, 'Exercise');
+    if (isMainLift(ex)) fail(400, `${ex.name} is a main movement, so it can’t be used as a swap`);
+    if (ex.id === r.exercise_id) {
+      q('DELETE FROM athlete_swaps WHERE assignment_id = ? AND from_exercise_id = ?').run(asg.id, r.exercise_id);
+      return res.json({ swaps: swapRows(a.id) });
+    }
+    q(`INSERT INTO athlete_swaps (assignment_id, athlete_id, from_exercise_id, to_exercise_id, created_by) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (assignment_id, from_exercise_id) DO UPDATE SET to_exercise_id = excluded.to_exercise_id, created_by = excluded.created_by,
+         created_at = datetime('now')`).run(asg.id, a.id, r.exercise_id, ex.id, u.id);
+    const sessions = q(`SELECT COUNT(DISTINCT d.id) AS n FROM prescriptions x JOIN program_days d ON d.id = x.day_id
+      WHERE d.program_id = ? AND x.exercise_id = ?`).get(day.program_id, r.exercise_id).n;
+    const program = q('SELECT name FROM programs WHERE id = ?').get(day.program_id).name;
+    if (u.role === 'athlete') {
+      notify(a.coach_id, { type: 'session', actorId: u.id, link: `/athletes/${a.id}?tab=program`,
+        title: `${a.name} swapped ${r.exercise_name} → ${ex.name}`, body: `For the rest of ${program} (${sessions} session${sessions === 1 ? '' : 's'}). Only their copy is changed.` });
+    } else {
+      notify(a.id, { type: 'program', actorId: u.id, link: '/program', title: `${r.exercise_name} → ${ex.name} in your program`, body: `For the rest of ${program}.` });
+    }
+    res.status(201).json({ swaps: swapRows(a.id), sessions });
+  });
+  app.delete('/api/athletes/:id/swaps/:swapId', (req, res) => {
+    const a = athleteFor(req, req.params.id);
+    const sw = q('SELECT * FROM athlete_swaps WHERE id = ? AND athlete_id = ?').get(Number(req.params.swapId), a.id) || fail(404, 'Swap not found');
+    q('DELETE FROM athlete_swaps WHERE id = ?').run(sw.id);
+    res.json({ swaps: swapRows(a.id) });
+  });
 
   // Swap an accessory for today's session: the same sets/reps/effort, with the other exercise's own load and history.
   app.get('/api/athletes/:id/rx/:rxId/swap', (req, res) => {

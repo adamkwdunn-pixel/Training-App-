@@ -118,6 +118,34 @@ function NutritionTab({ athleteId }) {
   );
 }
 
+/** Exercises the athlete has swapped for the rest of a program (their copy only). The coach can undo them. */
+function AthleteSwaps({ athlete }) {
+  const { data, setData } = useApi(`/athletes/${athlete.id}/swaps`);
+  if (!data?.swaps?.length) return null;
+  const undo = async (sw) => {
+    if (!confirm(`Put ${sw.from_name} back in ${athlete.name.split(' ')[0]}’s ${sw.program_name}?`)) return;
+    setData(await api(`/athletes/${athlete.id}/swaps/${sw.id}`, { method: 'DELETE' }));
+  };
+  return (
+    <section>
+      <h2>Exercise swaps</h2>
+      <p className="tiny muted" style={{ margin: '0 0 8px' }}>Swaps {athlete.name.split(' ')[0]} made for the rest of a program. They only change this athlete’s sessions, not your program.</p>
+      <div className="list">
+        {data.swaps.map((sw) => (
+          <div key={sw.id} className="row">
+            <Icon name="copy" size={18} />
+            <div className="grow small">
+              <strong>{sw.from_name} → {sw.to_name}</strong>
+              <div className="tiny muted">{sw.program_name}{sw.active ? '' : ' (inactive)'} · {fmtDate(sw.created_at)}</div>
+            </div>
+            <button className="btn small ghost" onClick={() => undo(sw)}>Undo</button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ProgramTab({ athlete, assignments, reload }) {
   const { data: programs } = useApi('/programs');
   const { data: rules } = useApi('/rules');
@@ -138,6 +166,7 @@ function ProgramTab({ athlete, assignments, reload }) {
 
   return (
     <>
+      <AthleteSwaps athlete={athlete} />
       <section>
         <h2>Assigned programs</h2>
         {assignments.length === 0 && <p className="muted small">No program assigned yet.</p>}

@@ -334,6 +334,18 @@ CREATE TABLE IF NOT EXISTS notification_prefs (
   last_photo_on TEXT
 );
 
+-- An athlete's own exercise swaps that last for the whole of one program assignment (accessories only).
+CREATE TABLE IF NOT EXISTS athlete_swaps (
+  id INTEGER PRIMARY KEY,
+  assignment_id INTEGER NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+  athlete_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  from_exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+  to_exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (assignment_id, from_exercise_id)
+);
+
 -- Pages that failed to draw on someone's device (reported by the app's error screen).
 CREATE TABLE IF NOT EXISTS client_errors (
   id INTEGER PRIMARY KEY,

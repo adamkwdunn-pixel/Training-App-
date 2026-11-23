@@ -68,7 +68,7 @@ export default function Session() {
   const { user } = useAuth();
   const nav = useNavigate();
   const athleteId = paramAthlete || user.id;
-  const { data, error } = useApi(`/athletes/${athleteId}/days/${dayId}`);
+  const { data, error, reload } = useApi(`/athletes/${athleteId}/days/${dayId}`);
   const key = draftKey(athleteId, dayId);
   const [rows, setRows] = useState(null);
   const [meta, setMeta] = useState({ performed_on: today(), session_rpe: '', notes: '' });
@@ -102,6 +102,29 @@ export default function Session() {
 
   const eff = (r) => swaps[r.id] || r; // the exercise actually being done today
   const rxById = (id) => { const r = day.prescriptions.find((x) => x.id === Number(id)); return r && eff(r); };
+  // Whole-program swaps change the session itself, so reload it and start that exercise's rows afresh.
+  const forgetRows = (rxId) => {
+    const d = readDraft(key);
+    if (d) {
+      if (d.rows) delete d.rows[rxId];
+      if (d.swaps) delete d.swaps[rxId];
+      writeDraft(key, d);
+    }
+    setSwaps((cur) => { const next = { ...cur }; delete next[rxId]; return next; });
+    setRows((cur) => { const next = { ...cur }; delete next[rxId]; return next; }); // fresh rows come with the reload
+  };
+  const programSwap = async (r, exerciseId) => {
+    await api(`/athletes/${athleteId}/swaps`, { method: 'POST', body: { prescription_id: r.id, exercise_id: exerciseId } });
+    forgetRows(r.id);
+    setSwapping(null);
+    await reload();
+  };
+  const undoProgramSwap = async (r) => {
+    if (!confirm(`Switch back to ${r.swapped_from_name} for the rest of your program?`)) return;
+    await api(`/athletes/${athleteId}/swaps/${r.program_swap_id}`, { method: 'DELETE' });
+    forgetRows(r.id);
+    await reload();
+  };
   const applySwap = (r, swapped) => {
     setSwaps((cur) => {
       const next = { ...cur };
@@ -222,6 +245,9 @@ export default function Session() {
             <div className="grow">
               <div>{r.block && <span className="block-tag">{r.block}</span>}<strong>{r.exercise_name}</strong></div>
               {r0.notes && <div className="ex-note">{r0.notes}</div>}
+              {r0.program_swap_id && !swaps[r0.id] && (
+                <div className="tiny muted">Swapped in for {r0.swapped_from_name} for your whole program · <button type="button" className="link-btn" onClick={() => undoProgramSwap(r0)}>switch back</button></div>
+              )}
               {swaps[r0.id] && <div className="tiny muted">Swapped in for {r0.exercise_name} today · <button type="button" className="link-btn" onClick={() => applySwap(r0, null)}>undo</button></div>}
               <div className="small muted">{describeRx(r)}</div>
               {r0.swappable && !swaps[r0.id] && swapping !== r0.id && (
@@ -237,7 +263,7 @@ export default function Session() {
             {r.target_load == null && r.load_basis === 'needs max' && <div className="muted tiny">No max set — pick a weight</div>}
           </div>
           {swapping === r0.id && (
-            <SwapPicker r0={r0} athleteId={athleteId} onPick={(p) => applySwap(r0, p)} onCancel={() => setSwapping(null)} />
+            <SwapPicker r0={r0} athleteId={athleteId} onPick={(p) => applySwap(r0, p)} onProgramSwap={(exId) => programSwap(r0, exId)} onCancel={() => setSwapping(null)} />
           )}
           {r.cues && <div className="small muted">Cues: {r.cues}</div>}
           {r.demo_url && <a className="small" href={r.demo_url} target="_blank" rel="noreferrer">Watch demo ↗</a>}
@@ -346,19 +372,35 @@ export default function Session() {
  * Pick a substitute for an accessory: from the coach's library (same category first), or add a new exercise.
  * Main movements can't be picked. Same sets, reps and effort target; the load comes from the new exercise's history.
  */
-function SwapPicker({ r0, athleteId, onPick, onCancel }) {
+function SwapPicker({ r0, athleteId, onPick, onProgramSwap, onCancel }) {
   const { data } = useApi('/exercises');
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(null);
+  const [chosen, setChosen] = useState(null); // exercise picked, waiting for "today" or "whole program"
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const original = r0.swapped_from_name || r0.exercise_name;
 
-  const pick = async (exerciseId) => {
+  const pick = (exercise) => {
+    setErr('');
+    setChosen(exercise);
+  };
+  const today = async () => {
     setBusy(true);
     setErr('');
     try {
-      const { prescription } = await api(`/athletes/${athleteId}/rx/${r0.id}/swap?exercise_id=${exerciseId}`);
+      const { prescription } = await api(`/athletes/${athleteId}/rx/${r0.id}/swap?exercise_id=${chosen.id}`);
       onPick(prescription);
+    } catch (e) {
+      setErr(e.message);
+      setBusy(false);
+    }
+  };
+  const wholeProgram = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      await onProgramSwap(chosen.id);
     } catch (e) {
       setErr(e.message);
       setBusy(false);
@@ -371,7 +413,9 @@ function SwapPicker({ r0, athleteId, onPick, onCancel }) {
     try {
       const { exercise } = await api('/exercises', { method: 'POST', body: adding });
       if (exercise.main) throw new Error(`${exercise.name} is a main movement, so it can’t be used as a swap`);
-      await pick(exercise.id);
+      setAdding(null);
+      setBusy(false);
+      pick(exercise);
     } catch (e2) {
       setErr(e2.message);
       setBusy(false);
@@ -385,10 +429,20 @@ function SwapPicker({ r0, athleteId, onPick, onCancel }) {
   return (
     <div className="swap-picker stack">
       <div className="inline-form" style={{ alignItems: 'center' }}>
-        <strong className="grow small">Swap {r0.exercise_name} for today</strong>
+        <strong className="grow small">Swap {r0.exercise_name}</strong>
         <button type="button" className="btn small ghost" onClick={onCancel}>Cancel</button>
       </div>
-      {adding ? (
+      {chosen ? (
+        <div className="stack swap-choice">
+          <p className="small" style={{ margin: 0 }}>Swap <strong>{r0.exercise_name}</strong> for <strong>{chosen.name}</strong>…</p>
+          <button type="button" className="btn primary" disabled={busy} onClick={today}>Just for today</button>
+          <button type="button" className="btn" disabled={busy} onClick={wholeProgram}>For the rest of my program</button>
+          <p className="tiny muted" style={{ margin: 0 }}>
+            “Rest of my program” puts {chosen.name} in place of {original} in every session of this program, for you only. You can switch back any time; your coach is told.
+          </p>
+          <button type="button" className="btn small ghost" style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={() => setChosen(null)}>Back</button>
+        </div>
+      ) : adding ? (
         <form className="stack" onSubmit={add}>
           <ExerciseFields value={adding} onChange={setAdding} cuesLabel="Notes / cues (optional)" />
           <div className="row-actions" style={{ marginTop: 0 }}>
@@ -402,7 +456,7 @@ function SwapPicker({ r0, athleteId, onPick, onCancel }) {
           <div className="swap-options">
             {!data && <p className="muted small">Loading…</p>}
             {options.slice(0, 40).map((x) => (
-              <button type="button" key={x.id} className="swap-option" disabled={busy} onClick={() => pick(x.id)}>
+              <button type="button" key={x.id} className="swap-option" disabled={busy} onClick={() => pick(x)}>
                 <span>{x.name}</span>
                 <span className="tiny muted">{x.category === r0.category ? 'similar' : x.category}</span>
               </button>
@@ -412,7 +466,7 @@ function SwapPicker({ r0, athleteId, onPick, onCancel }) {
           <button type="button" className="btn small" onClick={() => setAdding({ name: q.trim(), category: r0.category || 'strength', metric: r0.metric || 'load', demo_url: '', cues: '' })}>
             <Icon name="plus" size={14} /> Add a new exercise{q.trim() ? ` “${q.trim()}”` : ''}
           </button>
-          <p className="tiny muted" style={{ margin: 0 }}>Same sets, reps and effort as programmed. Your coach sees what you swapped.</p>
+          <p className="tiny muted" style={{ margin: 0 }}>Same sets, reps and effort as programmed. Next you’ll choose: just today, or the rest of your program.</p>
         </>
       )}
       {err && <p className="error">{err}</p>}
